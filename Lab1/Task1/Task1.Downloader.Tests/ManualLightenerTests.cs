@@ -36,6 +36,26 @@ public class ManualLightenerTests
     }
 
     [Theory]
+    [InlineData("a word\r", "WORD FOUND!!!\r")]
+    [InlineData("a\nword\r", "a\nWORD FOUND!!!\r")]
+    [InlineData("nothing\r", "nothing\r")]
+    public void KeepsTrailingLoneCarriageReturn(string input, string expected)
+    {
+        var (text, _) = ManualLightener.Lighten(input, "word", wholeWord: false);
+
+        Assert.Equal(expected, text);
+    }
+
+    [Fact]
+    public void MatchesNonAsciiWords()
+    {
+        var (text, replaced) = ManualLightener.Lighten("Київ\nЛьвів\n", "київ", wholeWord: true);
+
+        Assert.Equal("WORD FOUND!!!\nЛьвів\n", text);
+        Assert.Equal(1, replaced);
+    }
+
+    [Theory]
     [InlineData(false, 2)]
     [InlineData(true, 1)]
     public void WholeWordSkipsWordInsideOtherWords(bool wholeWord, int expected)

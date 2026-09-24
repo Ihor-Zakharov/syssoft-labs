@@ -1,8 +1,6 @@
-using System.Text;
-
 namespace Task1.Downloader;
 
-internal sealed record DownloadResult(string ManualPath, string LightPath, int ReplacedLines);
+internal sealed record DownloadResult(string ManualPath, string LightPath, int ReplacedLines, string Encoding);
 
 internal sealed class ManualDownloader(HttpClient http)
 {
@@ -31,9 +29,11 @@ internal sealed class ManualDownloader(HttpClient http)
         // The original is saved byte for byte; both files are overwritten on every run
         await File.WriteAllBytesAsync(manualPath, bytes, cancellationToken);
 
-        var (light, replaced) = ManualLightener.Lighten(Encoding.UTF8.GetString(bytes), options.Word, options.WholeWord);
-        await File.WriteAllTextAsync(lightPath, light, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false), cancellationToken);
+        // The light file keeps the original encoding, so unchanged lines stay byte-identical
+        var (text, encoding) = TextCodec.Decode(bytes);
+        var (light, replaced) = ManualLightener.Lighten(text, options.Word, options.WholeWord);
+        await File.WriteAllBytesAsync(lightPath, TextCodec.Encode(light, encoding), cancellationToken);
 
-        return new DownloadResult(manualPath, lightPath, replaced);
+        return new DownloadResult(manualPath, lightPath, replaced, encoding.WebName);
     }
 }

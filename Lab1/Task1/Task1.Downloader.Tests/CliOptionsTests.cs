@@ -22,6 +22,19 @@ public class CliOptionsTests
     }
 
     [Theory]
+    [InlineData("-p")]
+    [InlineData("--help")]
+    [InlineData("--")]
+    public void DoubleDashAllowsWordStartingWithDash(string word)
+    {
+        var options = CliOptions.TryParse(["--whole-word", "--", word], out var error);
+
+        Assert.Null(error);
+        Assert.Equal(word, options?.Word);
+        Assert.True(options?.WholeWord);
+    }
+
+    [Theory]
     [InlineData("-h")]
     [InlineData("--help")]
     public void HelpIsNotAnError(string flag)
@@ -37,10 +50,15 @@ public class CliOptionsTests
         [],
         ["--whole-word"],
         ["one", "two"],
+        ["--", "one", "two"],
         ["word", "--verbose"],
+        ["word", "-p"],
         ["word", "--output-dir"],
+        ["word", "--output-dir", ""],
+        ["word", "--output-dir", "   "],
         ["word", "--url", "ftp://example.com/m.txt"],
         ["word", "--url", "not a url"],
+        ["word", "--url", ""],
     ];
 
     [Theory]

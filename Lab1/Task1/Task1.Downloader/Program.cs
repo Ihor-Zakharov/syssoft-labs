@@ -10,8 +10,15 @@ internal static class Program
 
     private static async Task<int> Main(string[] args)
     {
-        // The default Windows console code page cannot print many non-ASCII characters (paths, search words)
-        Console.OutputEncoding = Encoding.UTF8;
+        try
+        {
+            // The default Windows console code page cannot print many non-ASCII characters (paths, search words)
+            Console.OutputEncoding = Encoding.UTF8;
+        }
+        catch (IOException)
+        {
+            // No console attached (e.g. started by a service): keep the default encoding
+        }
 
         var options = CliOptions.TryParse(args, out var error);
         if (options is null)
@@ -41,7 +48,7 @@ internal static class Program
         {
             var result = await new ManualDownloader(http).RunAsync(options, cts.Token);
             Console.WriteLine($"Downloaded: {result.ManualPath}");
-            Console.WriteLine($"Light:      {result.LightPath} (lines replaced: {result.ReplacedLines})");
+            Console.WriteLine($"Light:      {result.LightPath} (lines replaced: {result.ReplacedLines}, encoding: {result.Encoding})");
             return ExitOk;
         }
         catch (HttpRequestException ex)
@@ -56,9 +63,10 @@ internal static class Program
         {
             Console.Error.WriteLine("Cancelled.");
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
         {
-            Console.Error.WriteLine($"Failed to write file: {ex.Message}");
+            // Bad output path (invalid characters, no access, disk full, ...)
+            Console.Error.WriteLine($"Failed to write output to {options.OutputDir}: {ex.Message}");
         }
 
         return ExitFailure;

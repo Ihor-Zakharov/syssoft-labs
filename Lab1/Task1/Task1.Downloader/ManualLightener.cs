@@ -9,7 +9,7 @@ internal static class ManualLightener
 
     /// <summary>
     /// Replaces every line containing the word with <see cref="Marker"/>. Matching is case-insensitive;
-    /// line endings (CRLF or LF) are kept as in the original.
+    /// line endings (CRLF, LF or a trailing lone CR) are kept as in the original.
     /// </summary>
     public static (string Text, int Replaced) Lighten(string text, string word, bool wholeWord)
     {
@@ -27,7 +27,9 @@ internal static class ManualLightener
         {
             var newline = text.IndexOf('\n', start);
             var end = newline < 0 ? text.Length : newline + 1;
-            var eolLength = newline < 0 ? 0 : (newline > start && text[newline - 1] == '\r' ? 2 : 1);
+            var eolLength = newline >= 0
+                ? (newline > start && text[newline - 1] == '\r' ? 2 : 1)
+                : (text[end - 1] == '\r' ? 1 : 0);
 
             var line = text.AsSpan(start, end - start - eolLength);
             if (regex.IsMatch(line))
