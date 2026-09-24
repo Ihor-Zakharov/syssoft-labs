@@ -106,8 +106,12 @@ search-queries,index-queue}.ts` (hybrid pgvector cosine + full-text with RRF), m
 State when stopped: 204 log chunks (84 embedded), 16 commits, 5 PRs, 14 review comments, 3 events indexed.
 **Ollama sat at its 3 GiB limit** — `OLLAMA_CONTEXT_LENGTH=1024`, `NUM_PARALLEL=1`, `MAX_LOADED_MODELS=1` were just
 added; measure again (target ≤ 2 GiB, `docker inspect` → no OOMKilled) before enabling.
-Note: the **running Postgres already has migration 0002 applied** (`documents`, `ci_job_logs`). `labwatch-tabs`
-ignores those tables; when resuming, the migrator will see 0002 as already applied.
+Removed from the running system on 2026-09-24 (the code stays on `labwatch-wip`): tables `documents` and
+`ci_job_logs`, the `vector` extension and the 0002 row in `drizzle.__drizzle_migrations` (inside one transaction),
+Redis keys `index:queue` and `search:*`, the `labwatch_ollama-models` volume and the `ollama` / `labwatch-search`
+images. Postgres now runs `postgres:17.11-bookworm` (same build and glibc as before, so no reindex was needed); to
+resume semantic search switch back to a pgvector image **with the same Debian base** (`pgvector/pgvector:pg17` was
+bookworm) — a different glibc changes text collation and would require `REINDEX`.
 
 ### 5.4 AWS integration — not started
 

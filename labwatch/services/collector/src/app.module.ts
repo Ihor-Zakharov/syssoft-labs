@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { GithubService } from './github/github.service.js';
 import { HealthController, HeartbeatService } from './health.js';
 import { InfraModule } from './infra/infra.module.js';
-import { AWS_PROBE_READER, IntegrationsService, NotDeployedAwsProbe } from './integrations/integrations.service.js';
+import { AWS_PROBE_READER, IntegrationsService, NoReadKeyAwsProbe } from './integrations/integrations.service.js';
 import { CiPoller } from './pollers/ci.poller.js';
 import { CommitsPoller } from './pollers/commits.poller.js';
 import { IntegrationsPoller } from './pollers/integrations.poller.js';
@@ -19,7 +19,7 @@ import { SyncService } from './sync/sync.service.js';
     GithubService,
     SyncService,
     IntegrationsService,
-    { provide: AWS_PROBE_READER, useClass: NotDeployedAwsProbe },
+    { provide: AWS_PROBE_READER, useClass: NoReadKeyAwsProbe },
     HeartbeatService,
     CiPoller,
     CommitsPoller,

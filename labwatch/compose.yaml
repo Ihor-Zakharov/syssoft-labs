@@ -2,7 +2,7 @@ name: labwatch
 
 services:
   postgres:
-    image: pgvector/pgvector:pg17        # Postgres 17 + расширение pgvector (для эмбеддингов в фазе 3)
+    image: postgres:17.11-bookworm       # same PostgreSQL build and glibc (Debian 12) as the data volume was created with
     environment:
       POSTGRES_USER: labwatch
       POSTGRES_DB: labwatch

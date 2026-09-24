@@ -36,8 +36,8 @@ const VENDORS = {
 const AWS_HEALTH_URL = 'https://health.aws.amazon.com/public/currentevents';
 
 /**
- * Our side of the AWS integration. The AWS prober is not deployed yet; when it is, an
- * implementation will read its latest check from DynamoDB with a read-only key (AWS_STATUS_*).
+ * Our side of the AWS integration. The 24/7 prober runs in AWS (Lambda every minute → DynamoDB, eu-central-1);
+ * reading its latest check needs the read-only key of the IAM user syssoft-labs-labwatch-reader.
  */
 export interface AwsProbeReader {
   latest(): Promise<OurConnection>;
@@ -45,15 +45,22 @@ export interface AwsProbeReader {
 
 export const AWS_PROBE_READER = Symbol('AWS_PROBE_READER');
 
-export class NotDeployedAwsProbe implements AwsProbeReader {
+/** Used until the DynamoDB reader is implemented and the read key is in .env (docs/HANDOFF.md §5.4). */
+export class NoReadKeyAwsProbe implements AwsProbeReader {
   async latest(): Promise<OurConnection> {
     return {
-      state: 'not_deployed',
-      summary: 'The AWS status prober is not deployed yet',
-      hint: 'Once deployed, labwatch reads the prober’s latest check from DynamoDB with a read-only key (AWS_STATUS_* settings).',
+      state: 'not_configured',
+      summary: 'The prober runs in AWS; labwatch has no read key yet',
+      hint:
+        'Create an access key for the IAM user syssoft-labs-labwatch-reader (read-only, one DynamoDB table) and add ' +
+        'AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY and AWS_REGION=eu-central-1 to .env.',
       checkedAt: null,
       latencyMs: null,
-      facts: [],
+      facts: [
+        { label: 'Region', value: 'eu-central-1' },
+        { label: 'Prober', value: 'Lambda syssoft-labs-status-prober, every minute' },
+        { label: 'Table', value: 'syssoft-labs-status-checks' },
+      ],
     };
   }
 }
@@ -128,7 +135,7 @@ export class IntegrationsService {
       return {
         state: 'not_configured',
         summary: 'No HCP Terraform token',
-        hint: 'Add a read-only team or organization token as HCP_TERRAFORM_TOKEN to .env (HCP_TERRAFORM_ORG defaults to zakharov-syssoft).',
+        hint: 'State lives in HCP Terraform, but labwatch has no token to read it. Create an organization token (Organization settings → API tokens; the Free plan has no read-only token type) and add it as HCP_TERRAFORM_TOKEN to .env.',
         checkedAt: null,
         latencyMs: null,
         facts: [orgFact],

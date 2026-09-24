@@ -93,7 +93,7 @@ gutter is reserved, tab captions reserve their bold width, tables use fixed colu
 |---|---|---|
 | GitHub | token present and accepted, rate limit (remaining/limit, reset), labwatch's hourly budget, average API latency of the last calls — no extra requests | githubstatus.com: overall indicator, API Requests, Actions, Pages, Git Operations, open incidents |
 | HCP Terraform | with `HCP_TERRAFORM_TOKEN` (read-only team/organization token) every 5 min: the workspaces of `HCP_TERRAFORM_ORG` (execution mode, lock, resource count, current state version); without it "Not configured" | status.hashicorp.com: HCP Terraform, Terraform Registry, HCP API |
-| AWS | "Not deployed yet" — once the AWS status prober exists, its latest check will be read from DynamoDB with a read-only key (behind the `AwsProbeReader` interface) | AWS Health public events for `AWS_HEALTH_REGION` (an undocumented UTF-16 feed; "n/a" when it cannot be read) |
+| AWS | the 24/7 prober runs in AWS (Lambda + DynamoDB, eu-central-1); until the read-only key of `syssoft-labs-labwatch-reader` is in `.env` and the DynamoDB reader is written (`docs/HANDOFF.md` §5.4) the card says "Not configured" and shows where the prober runs |
 
 ### Repository
 
@@ -257,6 +257,7 @@ Type safety runs end to end: the web app imports only the **type** of the gatewa
 
 ## Next phases
 
-1. Kubernetes: kind cluster + Helm chart, e2e tests against the cluster in CI.
-2. Embeddings: index CI logs and review comments into pgvector, semantic search ("was there a failure like this before?").
-3. Terraform against LocalStack: a second status-page vantage (EventBridge + Lambda), SQS between collector and search, S3 log archive.
+1. AWS vantage: read the 24/7 prober that already runs in AWS (Lambda + DynamoDB, see `docs/HANDOFF.md` §5.4).
+2. Kubernetes: kind cluster + Helm chart, e2e tests against the cluster in CI, ArgoCD.
+3. Semantic search over CI logs and reviews — postponed; the unfinished code is parked on the local branch
+   `labwatch-wip` (see `docs/HANDOFF.md` §5.3).
