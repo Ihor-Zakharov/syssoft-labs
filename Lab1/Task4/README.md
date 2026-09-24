@@ -73,6 +73,17 @@ Open <http://localhost:8025> to see the message.
 powershell -ExecutionPolicy Bypass -File Lab1\Task4\send-gmail.ps1 -To teacher@knu.ua
 ```
 
+## Send from GitHub Actions (no password on the PC)
+
+The workflow `.github/workflows/send-lab1-email.yml` runs this program on a GitHub runner:
+**Actions → Send Lab1 email → Run workflow**, enter the recipient (subject defaults to `LAB-1`). It works only from
+`main`. One-time setup — the password goes straight into GitHub's encrypted secrets and is masked in logs:
+
+```powershell
+gh variable set LAB1_SMTP_USER --body "<your gmail address>"
+gh secret set LAB1_SMTP_PASSWORD        # asks for the app password with hidden input
+```
+
 ## How sending works (SMTP)
 
 ```

@@ -53,6 +53,8 @@ Repository settings → Secrets and variables → Actions:
 | variable | `AWS_DEPLOY_ROLE_ARN` | `arn:aws:iam::816600798305:role/syssoft-labs-gha-deploy` |
 | secret | `TF_API_TOKEN` | HCP Terraform token (organization `zakharov-syssoft`) |
 | secret | `CLAUDE_CODE_OAUTH_TOKEN` | already set — used by `review.yml` |
+| variable | `LAB1_SMTP_USER` | Gmail address that sends the Lab1 email (`send-lab1-email.yml`) |
+| secret | `LAB1_SMTP_PASSWORD` | Gmail app password for it |
 
 The review action only runs when `review.yml` in a pull request is identical to the one on `main`, so changes to
 `review.yml` take effect after they reach `main`.

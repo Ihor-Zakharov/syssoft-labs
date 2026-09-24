@@ -1,0 +1,49 @@
+name: Send Lab1 email
+
+# Lab1 Task4 from GitHub Actions: Actions → "Send Lab1 email" → Run workflow → enter the recipient.
+# The Gmail app password lives only in the repository secret LAB1_SMTP_PASSWORD (masked in logs);
+# the sender address is the repository variable LAB1_SMTP_USER.
+on:
+  workflow_dispatch:
+    inputs:
+      to:
+        description: Recipient address
+        required: true
+        type: string
+      subject:
+        description: Subject
+        required: true
+        default: LAB-1
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: send-lab1-email
+  cancel-in-progress: false
+
+jobs:
+  send:
+    # Only from main: a workflow edited on another branch cannot use the password
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Send
+        env:
+          LAB1_SMTP_HOST: smtp.gmail.com
+          LAB1_SMTP_PORT: "587"
+          LAB1_SMTP_SECURITY: starttls
+          LAB1_SMTP_USER: ${{ vars.LAB1_SMTP_USER }}
+          LAB1_SMTP_PASSWORD: ${{ secrets.LAB1_SMTP_PASSWORD }}
+          # Inputs are passed through the environment, never pasted into the script (no shell injection)
+          MAIL_TO: ${{ inputs.to }}
+          MAIL_SUBJECT: ${{ inputs.subject }}
+        run: dotnet run --project Lab1/Task4/Task4.Mailer -c Release -- "$MAIL_TO" "$MAIL_SUBJECT"
