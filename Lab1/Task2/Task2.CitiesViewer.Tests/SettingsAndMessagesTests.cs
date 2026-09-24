@@ -25,21 +25,29 @@ public class SettingsAndMessagesTests
     [Fact]
     public void DefaultPointsToLabDatabase()
     {
-        Assert.Equal(@"(localdb)\MSSQLLocalDB / ZAKHAROV-LAB1", ConnectionSettings.Describe(ConnectionSettings.Default));
+        Assert.Equal(@"(localdb)\MSSQLLocalDB / ZAKHAROV-LAB1", ConnectionSettings.Parse(ConnectionSettings.Default).Description);
     }
 
     [Fact]
     public void DescriptionNeverContainsCredentials()
     {
-        var description = ConnectionSettings.Describe("Server=db.example;Database=cities;User ID=lab;Password=s3cret");
+        var connection = ConnectionSettings.Parse("Server=db.example;Database=cities;User ID=lab;Password=s3cret");
 
-        Assert.Equal("db.example / cities", description);
+        Assert.Equal("db.example / cities", connection.Description);
     }
 
     [Fact]
     public void DatabaseNameComesFromConnectionString()
     {
-        Assert.Equal("NO_SUCH_DB", ConnectionSettings.DatabaseName(@"Server=(localdb)\MSSQLLocalDB;Database=NO_SUCH_DB"));
+        Assert.Equal("NO_SUCH_DB", ConnectionSettings.Parse(@"Server=(localdb)\MSSQLLocalDB;Database=NO_SUCH_DB").Database);
+    }
+
+    [Theory]
+    [InlineData("Server=x;Databse=typo")]
+    [InlineData("just some text")]
+    public void MalformedConnectionStringIsReportedAsArgumentException(string connectionString)
+    {
+        Assert.ThrowsAny<ArgumentException>(() => ConnectionSettings.Parse(connectionString));
     }
 
     [Fact]

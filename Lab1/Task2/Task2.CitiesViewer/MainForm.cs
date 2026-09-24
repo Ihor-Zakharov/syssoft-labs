@@ -5,14 +5,14 @@ namespace Task2.CitiesViewer;
 internal partial class MainForm : Form
 {
     private readonly CitiesRepository _repository;
-    private readonly string _database;
+    private readonly ConnectionInfo _connection;
 
-    public MainForm(CitiesRepository repository, string source, string database)
+    public MainForm(CitiesRepository repository, ConnectionInfo connection)
     {
         InitializeComponent();
         _repository = repository;
-        _database = database;
-        sourceLabel.Text = source;
+        _connection = connection;
+        sourceLabel.Text = connection.Description;
     }
 
     private async void MainForm_Load(object? sender, EventArgs e) => await LoadCitiesAsync();
@@ -33,7 +33,7 @@ internal partial class MainForm : Form
         {
             citiesBindingSource.DataSource = Array.Empty<City>();
             statusLabel.Text = $"SQL error {ex.Number}";
-            MessageBox.Show(this, ErrorMessages.ForSqlError(ex.Number, ex.Message, _database), "Cannot load cities",
+            MessageBox.Show(this, ErrorMessages.ForSqlError(ex.Number, ex.Message, _connection.Database), "Cannot load cities",
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         finally

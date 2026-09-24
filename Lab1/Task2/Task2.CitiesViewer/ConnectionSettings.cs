@@ -2,6 +2,12 @@ using Microsoft.Data.SqlClient;
 
 namespace Task2.CitiesViewer;
 
+/// <summary>Where the program connects to — without credentials, safe to show in the UI.</summary>
+internal sealed record ConnectionInfo(string Server, string Database)
+{
+    public string Description => $"{Server} / {Database}";
+}
+
 internal static class ConnectionSettings
 {
     public const string EnvironmentVariable = "LAB1_TASK2_CONNECTION";
@@ -24,13 +30,13 @@ internal static class ConnectionSettings
         return string.IsNullOrWhiteSpace(fromEnvironment) ? Default : fromEnvironment;
     }
 
-    public static string DatabaseName(string connectionString) =>
-        new SqlConnectionStringBuilder(connectionString).InitialCatalog;
-
-    /// <summary>"server / database" for the status bar — never shows credentials.</summary>
-    public static string Describe(string connectionString)
+    /// <summary>
+    /// Parses the connection string once. A malformed string (unknown keyword, missing '=') throws
+    /// <see cref="ArgumentException"/> — the caller reports it instead of crashing.
+    /// </summary>
+    public static ConnectionInfo Parse(string connectionString)
     {
         var builder = new SqlConnectionStringBuilder(connectionString);
-        return $"{builder.DataSource} / {builder.InitialCatalog}";
+        return new ConnectionInfo(builder.DataSource, builder.InitialCatalog);
     }
 }

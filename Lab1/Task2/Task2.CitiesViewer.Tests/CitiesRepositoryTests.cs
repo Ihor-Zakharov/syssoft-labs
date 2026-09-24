@@ -47,14 +47,20 @@ public sealed class CitiesRepositoryTests(LocalDbFixture db) : IClassFixture<Loc
     {
         Skip.If(db.UnavailableReason is not null, db.UnavailableReason);
 
-        var connectionString = ConnectionSettings.Default.Replace("ZAKHAROV-LAB1", "Task2Tests_Missing_" + Guid.NewGuid().ToString("N"));
+        // Keep the app's ConnectRetryCount but stretch the retry interval to 30 s: if the retry ever comes back,
+        // the call takes 30+ s, far above the 20 s limit below, while a slow runner still has plenty of headroom
+        var connectionString = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(ConnectionSettings.Default)
+        {
+            InitialCatalog = "Task2Tests_Missing_" + Guid.NewGuid().ToString("N"),
+            ConnectRetryInterval = 30,
+        }.ConnectionString;
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
         var error = await Assert.ThrowsAsync<Microsoft.Data.SqlClient.SqlException>(
             () => new CitiesRepository(connectionString).GetAllAsync(CancellationToken.None));
 
         Assert.Equal(4060, error.Number);
-        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(8), $"took {stopwatch.Elapsed} — the 10 s retry is back?");
+        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(20), $"took {stopwatch.Elapsed} — the connection retry is back?");
     }
 
     [Fact]

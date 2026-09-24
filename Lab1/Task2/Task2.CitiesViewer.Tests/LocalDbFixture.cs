@@ -24,9 +24,11 @@ public sealed partial class LocalDbFixture : IAsyncLifetime
         {
             await ExecuteAsync(Master, $"CREATE DATABASE [{_databaseName}];");
         }
-        catch (SqlException ex)
+        catch (Exception ex)
         {
-            UnavailableReason = $"LocalDB is not available: {ex.Message}";
+            // Any failure here means "no usable LocalDB" (not installed, broken instance, no SQL client support):
+            // the database tests are skipped instead of failing the whole class
+            UnavailableReason = $"LocalDB is not available: {ex.GetType().Name}: {ex.Message}";
             return;
         }
 
