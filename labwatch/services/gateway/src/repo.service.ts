@@ -1,9 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { ciJobs, ciRuns, commits, prComments, prReviews, pullRequests, testReports, type DbHandle } from '@labwatch/infra';
+import { ciJobs, ciRuns, commitAreaCondition, commits, pageQuery, prComments, prReviews, pullRequests, testReports, type DbHandle } from '@labwatch/infra';
 import {
   CommitsStatusSchema,
   RedisKeys,
   ciStateOf,
+  pageList,
   type BranchesView,
   type CiJob,
   type CiRun,
@@ -12,6 +13,8 @@ import {
   type CommitRow,
   type CommitsStatus,
   type CommitsView,
+  type PageArgs,
+  type Paged,
   type PrComment,
   type PrReview,
   type PullDetail,
@@ -42,6 +45,20 @@ const iso = (d: Date) => d.toISOString();
 const isoOrNull = (d: Date | null) => (d === null ? null : d.toISOString());
 
 type RunRecord = typeof ciRuns.$inferSelect;
+
+/** Rows fetched by key, in the order of `keys` (the page order); keys whose row vanished meanwhile are skipped. */
+function inKeyOrder<K, R>(keys: readonly K[], rows: readonly R[], keyOf: (row: R) => K): R[] {
+  const byKey = new Map(rows.map((r) => [keyOf(r), r]));
+  return keys.flatMap((k) => {
+    const row = byKey.get(k);
+    return row ? [row] : [];
+  });
+}
+
+/** Same page with other rows (the page math and the anchor stay). */
+function withRows<T, U>(page: Paged<T>, rows: U[]): Paged<U> {
+  return { ...page, rows };
+}
 type PullRecord = typeof pullRequests.$inferSelect;
 
 function toRun(r: RunRecord): CiRun {
@@ -158,10 +175,24 @@ export class RepoService {
 
   // CI runs
 
-  async ciRuns(args: { branch: string | null; limit: number }): Promise<CiRunRow[]> {
-    const where = args.branch ? and(eq(ciRuns.repo, this.repo), eq(ciRuns.branch, args.branch)) : eq(ciRuns.repo, this.repo);
-    const runs = (await this.db.db.select().from(ciRuns).where(where).orderBy(desc(ciRuns.createdAt)).limit(args.limit)).map(toRun);
-    return this.decorateRuns(runs);
+  /** Newest first (created_at desc, id desc), 15 per page, anchored so new runs do not shift pages 2…N. */
+  async ciRuns(args: { branch: string | null } & PageArgs): Promise<Paged<CiRunRow>> {
+    const page = await pageQuery<{ id: string }>(this.db.pool, {
+      from: 'ci_runs',
+      select: 'id',
+      where: args.branch ? 'repo = $1 and branch = $2' : 'repo = $1',
+      params: args.branch ? [this.repo, args.branch] : [this.repo],
+      timeCol: 'created_at',
+      keyCol: 'id',
+      keyType: 'bigint',
+      page: args.page,
+      pageSize: args.pageSize,
+      anchor: args.anchor,
+    });
+    const ids = page.rows.map((r) => Number(r.id));
+    const records = ids.length ? await this.db.db.select().from(ciRuns).where(inArray(ciRuns.id, ids)) : [];
+    const runs = inKeyOrder(ids, records, (r) => r.id).map(toRun);
+    return withRows(page, await this.decorateRuns(runs));
   }
 
   async ciRun(runId: number): Promise<CiRunDetail | null> {
@@ -235,33 +266,59 @@ export class RepoService {
 
   // Commits
 
-  async commits(args: { branch: string | null; limit: number }): Promise<CommitsView> {
+  /**
+   * Newest first, 15 per page. `area` ("Lab 1", "Infra", "CI", "Repo") keeps only commits whose changed
+   * files touch it (commits whose files are not fetched yet drop out while the filter is on).
+   */
+  async commits(args: { branch: string | null; area: string | null } & PageArgs): Promise<CommitsView> {
     const status = await this.commitsStatus();
     const defaultBranch = status?.defaultBranch ?? this.config.defaultBranch;
     const ahead = aheadOfMain(status);
+    const labs = status?.labs ?? [];
 
     if (args.branch) {
+      // A branch's commits come from the collector's snapshot, already newest first
       const branch = status?.branches.find((b) => b.name === args.branch);
-      const list = (branch?.commits ?? []).slice(0, args.limit);
-      const [areas, seen] = await Promise.all([this.pathsBySha(list.map((c) => c.sha)), this.branchesBySha(list.map((c) => c.sha))]);
+      let list = branch?.commits ?? [];
+      if (args.area) {
+        const areas = await this.pathsBySha(list.map((c) => c.sha));
+        list = list.filter((c) => commitAreas(areas.get(c.sha))?.includes(args.area!));
+      }
+      const page = pageList(list, args, (c) => c.sha, (c) => c.committedAt);
+      const shas = page.rows.map((c) => c.sha);
+      const [areas, seen] = await Promise.all([this.pathsBySha(shas), this.branchesBySha(shas)]);
       const isDefault = args.branch === defaultBranch;
-      const rows: CommitRow[] = list.map((c) => ({
+      const compare = branch ? compareFor(branch) : null;
+      const rows: CommitRow[] = page.rows.map((c) => ({
         ...c,
         branches: seen.get(c.sha) ?? [args.branch!],
         areas: commitAreas(areas.get(c.sha)),
-        inMain: isDefault ? true : branch && compareFor(branch) ? !compareFor(branch)!.aheadShas.includes(c.sha) : null,
+        inMain: isDefault ? true : compare ? !compare.aheadShas.includes(c.sha) : null,
       }));
-      return { branch: args.branch, defaultBranch, compare: branch ? compareFor(branch) : null, labs: status?.labs ?? [], commits: rows };
+      return { branch: args.branch, defaultBranch, compare, labs, commits: withRows(page, rows) };
     }
 
-    const list = await this.db.db.select().from(commits).where(eq(commits.repo, this.repo)).orderBy(desc(commits.committedAt)).limit(args.limit);
-    const shas = list.map((c) => c.sha);
+    const area = args.area ? commitAreaCondition(args.area, 'commits.sha', 2) : null;
+    const page = await pageQuery<{ sha: string }>(this.db.pool, {
+      from: 'commits',
+      select: 'sha',
+      where: area ? `repo = $1 and ${area.sql}` : 'repo = $1',
+      params: [this.repo, ...(area?.params ?? [])],
+      timeCol: 'committed_at',
+      keyCol: 'sha',
+      keyType: 'text',
+      page: args.page,
+      pageSize: args.pageSize,
+      anchor: args.anchor,
+    });
+    const shas = page.rows.map((r) => r.sha);
+    const records = shas.length ? await this.db.db.select().from(commits).where(inArray(commits.sha, shas)) : [];
     const [areas, seen] = await Promise.all([this.pathsBySha(shas), this.branchesBySha(shas)]);
-    const rows: CommitRow[] = list.map((c) => {
+    const rows: CommitRow[] = inKeyOrder(shas, records, (c) => c.sha).map((c) => {
       const on = seen.get(c.sha) ?? [];
       return { ...c, committedAt: iso(c.committedAt), branches: on, areas: commitAreas(areas.get(c.sha)), inMain: inMain(c.sha, on, defaultBranch, ahead) };
     });
-    return { branch: null, defaultBranch, compare: null, labs: status?.labs ?? [], commits: rows };
+    return { branch: null, defaultBranch, compare: null, labs, commits: withRows(page, rows) };
   }
 
   /** Changed paths per commit; commits whose files were not fetched yet are missing from the map. */
@@ -290,10 +347,25 @@ export class RepoService {
 
   // Pull requests
 
-  async pulls(args: { branch: string | null; limit: number }): Promise<PullRow[]> {
-    const where = args.branch ? and(eq(pullRequests.repo, this.repo), eq(pullRequests.headRef, args.branch)) : eq(pullRequests.repo, this.repo);
-    const records = await this.db.db.select().from(pullRequests).where(where).orderBy(desc(pullRequests.updatedAt)).limit(args.limit);
-    return this.decoratePulls(records);
+  /** Most recently updated first (updated_at desc, number desc), 15 per page. */
+  async pulls(args: { branch: string | null } & PageArgs): Promise<Paged<PullRow>> {
+    const page = await pageQuery<{ number: number }>(this.db.pool, {
+      from: 'pull_requests',
+      select: 'number',
+      where: args.branch ? 'repo = $1 and head_ref = $2' : 'repo = $1',
+      params: args.branch ? [this.repo, args.branch] : [this.repo],
+      timeCol: 'updated_at',
+      keyCol: 'number',
+      keyType: 'integer',
+      page: args.page,
+      pageSize: args.pageSize,
+      anchor: args.anchor,
+    });
+    const numbers = page.rows.map((r) => r.number);
+    const records = numbers.length
+      ? await this.db.db.select().from(pullRequests).where(and(eq(pullRequests.repo, this.repo), inArray(pullRequests.number, numbers)))
+      : [];
+    return withRows(page, await this.decoratePulls(inKeyOrder(numbers, records, (p) => p.number)));
   }
 
   async pull(number: number): Promise<PullDetail | null> {

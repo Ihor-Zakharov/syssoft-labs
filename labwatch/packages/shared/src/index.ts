@@ -4,6 +4,7 @@ export * from './ci.js';
 export * from './integrations.js';
 export * from './keys.js';
 export * from './overall.js';
+export * from './paging.js';
 export * from './reviews.js';
 export * from './schemas.js';
 export * from './status.js';

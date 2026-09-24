@@ -5,6 +5,8 @@ import type {
   CiRunRow,
   CommitsView,
   IntegrationStatus,
+  PageArgs,
+  Paged,
   Overview,
   PullDetail,
   PullRow,
@@ -22,16 +24,16 @@ import type {
 export interface DashboardApi {
   overview(): Promise<Overview>;
   branches(): Promise<BranchesView>;
-  ciRuns(args: { branch: string | null; limit: number }): Promise<CiRunRow[]>;
+  ciRuns(args: { branch: string | null } & PageArgs): Promise<Paged<CiRunRow>>;
   ciRun(runId: number): Promise<CiRunDetail | null>;
   ciJobs(runId: number): Promise<CiJob[]>;
-  commits(args: { branch: string | null; limit: number }): Promise<CommitsView>;
-  pulls(args: { branch: string | null; limit: number }): Promise<PullRow[]>;
+  commits(args: { branch: string | null; area: string | null } & PageArgs): Promise<CommitsView>;
+  pulls(args: { branch: string | null } & PageArgs): Promise<Paged<PullRow>>;
   pull(number: number): Promise<PullDetail | null>;
   sourceProbes(limit: number): Promise<SourceProbe[]>;
-  events(limit: number): Promise<StoredEvent[]>;
+  events(args: PageArgs): Promise<Paged<StoredEvent>>;
   statusPage(scale: StatusScale, vantage: string): Promise<StatusPageView>;
-  incidents(limit: number): Promise<StatusIncident[]>;
+  incidents(args: PageArgs): Promise<Paged<StatusIncident>>;
   integrations(): Promise<IntegrationStatus[]>;
 }
 
