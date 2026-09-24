@@ -23,6 +23,16 @@ export const CiRunSchema = z.object({
 });
 export type CiRun = z.infer<typeof CiRunSchema>;
 
+export const CiStepSchema = z.object({
+  number: z.number(),
+  name: z.string(),
+  status: z.string(),
+  conclusion: z.string().nullable(),
+  startedAt: iso.nullable(),
+  completedAt: iso.nullable(),
+});
+export type CiStep = z.infer<typeof CiStepSchema>;
+
 export const CiJobSchema = z.object({
   id: z.number(),
   runId: z.number(),
@@ -32,6 +42,7 @@ export const CiJobSchema = z.object({
   startedAt: iso.nullable(),
   completedAt: iso.nullable(),
   htmlUrl: z.string().nullable(),
+  steps: z.array(CiStepSchema),
 });
 export type CiJob = z.infer<typeof CiJobSchema>;
 
@@ -40,7 +51,7 @@ export const CiStatusSchema = z.object({
   updatedAt: iso,
   activeRuns: z.number(),
   runs: z.array(CiRunSchema),
-  /** Jobs of the currently active runs, by run id (only fetched with a GitHub token). */
+  /** Jobs of the currently active runs, by run id. */
   jobs: z.record(z.string(), z.array(CiJobSchema)),
 });
 export type CiStatus = z.infer<typeof CiStatusSchema>;
@@ -65,11 +76,42 @@ export const BranchSchema = z.object({
 });
 export type Branch = z.infer<typeof BranchSchema>;
 
+/** A branch compared with another one (usually the default branch), from the compare API. */
+export const CompareInfoSchema = z.object({
+  base: z.string(),
+  head: z.string(),
+  baseSha: z.string(),
+  headSha: z.string(),
+  /** ahead / behind / diverged / identical */
+  status: z.string(),
+  aheadBy: z.number(),
+  behindBy: z.number(),
+  /** Commits on head that are not on base (max 250). */
+  aheadShas: z.array(z.string()),
+  /** Areas (Lab N / Infra / CI / Repo) of the files changed on head since the merge base. */
+  areas: z.array(z.string()),
+  fileCount: z.number(),
+  fetchedAt: iso,
+});
+export type CompareInfo = z.infer<typeof CompareInfoSchema>;
+
+export const BranchStateSchema = BranchSchema.extend({
+  /** Head for which `commits` was fetched; differs from headSha while an update is pending. */
+  commitsSha: z.string().nullable(),
+  commits: z.array(CommitSchema),
+  /** Compared with the default branch (null for the default branch itself or not fetched yet). */
+  compare: CompareInfoSchema.nullable(),
+});
+export type BranchState = z.infer<typeof BranchStateSchema>;
+
 export const CommitsStatusSchema = z.object({
   repo: z.string(),
   updatedAt: iso,
-  branches: z.array(BranchSchema),
-  commits: z.array(CommitSchema),
+  defaultBranch: z.string(),
+  /** Lab numbers found as top-level Lab<N>/ directories of the default branch. */
+  labs: z.array(z.number()),
+  labsSha: z.string().nullable(),
+  branches: z.array(BranchStateSchema),
 });
 export type CommitsStatus = z.infer<typeof CommitsStatusSchema>;
 
@@ -82,6 +124,7 @@ export const PullRequestSchema = z.object({
   merged: z.boolean(),
   author: z.string().nullable(),
   headRef: z.string(),
+  headSha: z.string().nullable(),
   baseRef: z.string(),
   createdAt: iso,
   updatedAt: iso,
@@ -132,6 +175,14 @@ export const RateLimitSchema = z.object({
 });
 export type RateLimit = z.infer<typeof RateLimitSchema>;
 
+/** labwatch's own GitHub request budget (rolling hour), written by the collector. */
+export const ApiBudgetSchema = z.object({
+  authenticated: z.boolean(),
+  budgetPerHour: z.number(),
+  windowMs: z.number(),
+});
+export type ApiBudget = z.infer<typeof ApiBudgetSchema>;
+
 export const HeartbeatSchema = z.object({
   service: z.string(),
   at: iso,
@@ -140,6 +191,19 @@ export const HeartbeatSchema = z.object({
   startedAt: iso,
 });
 export type Heartbeat = z.infer<typeof HeartbeatSchema>;
+
+export const StatusCheckSchema = z.object({
+  target: z.string(),
+  vantage: z.string(),
+  checkedAt: iso,
+  outcome: z.enum(['operational', 'degraded', 'down']),
+  httpStatus: z.number().nullable(),
+  latencyMs: z.number().nullable(),
+  tlsOk: z.boolean().nullable(),
+  tlsError: z.string().nullable(),
+  error: z.string().nullable(),
+});
+export type StatusCheck = z.infer<typeof StatusCheckSchema>;
 
 export const EVENT_KINDS = [
   'ci.failed',
@@ -150,6 +214,8 @@ export const EVENT_KINDS = [
   'source.cert_changed',
   'service.down',
   'service.up',
+  'status.down',
+  'status.up',
 ] as const;
 export const EventKindSchema = z.enum(EVENT_KINDS);
 export type EventKind = z.infer<typeof EventKindSchema>;
@@ -170,7 +236,18 @@ export type LabEvent = z.infer<typeof LabEventSchema>;
 export const StoredEventSchema = LabEventSchema.extend({ id: z.string() });
 export type StoredEvent = z.infer<typeof StoredEventSchema>;
 
-export const UPDATE_TOPICS = ['ci', 'commits', 'pulls', 'source', 'health', 'events', 'ratelimit'] as const;
+export const UPDATE_TOPICS = [
+  'ci',
+  'commits',
+  'pulls',
+  'reviews',
+  'checks',
+  'source',
+  'status',
+  'health',
+  'events',
+  'ratelimit',
+] as const;
 export const UpdateTopicSchema = z.enum(UPDATE_TOPICS);
 export type UpdateTopic = z.infer<typeof UpdateTopicSchema>;
 

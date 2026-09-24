@@ -19,7 +19,13 @@ export const RedisKeys = {
   commitsStatus: (repo: string) => `status:commits:${repo}`,
   pullsStatus: (repo: string) => `status:prs:${repo}`,
   sourceStatus: 'status:source',
+  /** Latest check per target for one vantage (hash: target → StatusCheck JSON). */
+  statusLatest: (vantage: string) => `status:checks:${vantage}`,
   rateLimit: 'github:ratelimit',
+  /** Sorted set of request timestamps (score = ms) for the rolling-hour budget. */
+  apiRequests: 'github:requests',
+  /** The collector's budget configuration (ApiBudget JSON). */
+  apiBudget: 'github:budget',
   etag: (url: string) => `etag:${url}`,
   /** Last known CI conclusion per workflow+branch, for change detection. */
   ciState: (repo: string) => `state:ci:${repo}`,
