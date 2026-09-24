@@ -134,8 +134,8 @@ export class DashboardService implements DashboardApi {
     return this.repo.pull(number);
   }
 
-  statusPage(scale: StatusScale): Promise<StatusPageView> {
-    return this.status.statusPage(scale);
+  statusPage(scale: StatusScale, vantage: string): Promise<StatusPageView> {
+    return this.status.statusPage(scale, vantage);
   }
 
   incidents(limit: number): Promise<StatusIncident[]> {

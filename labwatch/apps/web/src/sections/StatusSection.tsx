@@ -4,6 +4,7 @@ import {
   STATUS_SCALE_KEYS,
   formatUptime,
   uptimeTone,
+  vantageLabel,
   type StatusScale,
   type StatusTargetView,
   type UptimeBucket,
@@ -17,11 +18,14 @@ import { useTRPC } from '../trpc';
 const STATE_LABEL: Record<StatusTargetView['state'], string> = {
   operational: 'Operational',
   degraded: 'Degraded',
+  partial: 'Partial outage',
   down: 'Down',
   no_data: 'No data',
 };
 
-const STATE_TONE = { operational: 'ok', degraded: 'warn', down: 'bad', no_data: 'muted' } as const;
+const STATE_TONE = { operational: 'ok', degraded: 'warn', partial: 'warn', down: 'bad', no_data: 'muted' } as const;
+
+const ALL = 'all';
 
 function bucketPeriod(b: UptimeBucket, scale: StatusScale): string {
   const day = STATUS_SCALES[scale].bucketSeconds >= 86_400;
@@ -31,7 +35,7 @@ function bucketPeriod(b: UptimeBucket, scale: StatusScale): string {
 function bucketSummary(b: UptimeBucket): string {
   if (b.total === 0) return 'No data';
   const latency = b.avgLatencyMs !== null ? ` · avg ${b.avgLatencyMs} ms, p95 ${b.p95LatencyMs ?? '—'} ms` : '';
-  return `${formatUptime(b.uptime)} uptime${latency} · ${b.down} failed of ${b.total} checks${b.degraded ? `, ${b.degraded} slow` : ''}`;
+  return `${formatUptime(b.uptime)} uptime${latency} · ${b.down} of ${b.total} checked minutes down${b.degraded ? `, ${b.degraded} slow` : ''}`;
 }
 
 /** Uptime bars; the row is one focusable control: arrow keys move through the buckets. */
@@ -108,31 +112,64 @@ function TargetRow({ target, scale, now }: { target: StatusTargetView; scale: St
         <div className="target-stats small">
           <span className={`text-${STATE_TONE[target.state]}`}>{STATE_LABEL[target.state]}</span>
           <span title="Uptime over the selected period">{formatUptime(target.uptime)}</span>
-          <span className="mono" title={current ? `HTTP ${current.httpStatus ?? '—'}, checked ${formatDate(current.checkedAt)}` : undefined}>
-            {current?.latencyMs != null ? `${current.latencyMs} ms` : '—'}
-          </span>
+          {target.vantages.map((v) => (
+            <span
+              key={v.vantage}
+              className="vantage-latency mono"
+              title={v.current ? `${v.label}: HTTP ${v.current.httpStatus ?? '—'}, checked ${formatDate(v.current.checkedAt)}` : `${v.label}: no data`}
+            >
+              <Dot tone={STATE_TONE[v.state]} label={`${v.label}: ${STATE_LABEL[v.state]}`} />
+              {target.vantages.length > 1 && <span className="vantage-name">{v.label}</span>}
+              {v.state !== 'no_data' && v.current?.latencyMs != null ? `${v.current.latencyMs} ms` : '—'}
+            </span>
+          ))}
         </div>
       </div>
       <UptimeBars target={target} scale={scale} />
-      {current && target.state === 'down' && <p className="text-bad small">Last check {timeAgo(current.checkedAt, now)}: {current.error ?? `HTTP ${current.httpStatus}`}</p>}
+      {(target.state === 'down' || target.state === 'partial') &&
+        target.vantages
+          .filter((v) => v.state === 'down' && v.current)
+          .map((v) => (
+            <p key={v.vantage} className="text-bad small">
+              {v.label}, last check {timeAgo(v.current!.checkedAt, now)}: {v.current!.error ?? `HTTP ${v.current!.httpStatus}`}
+            </p>
+          ))}
     </li>
   );
 }
 
 export function StatusSection({ scale, onScale, now }: { scale: StatusScale; onScale: (scale: StatusScale) => void; now: number }) {
   const trpc = useTRPC();
-  const page = useQuery({ ...trpc.statusPage.queryOptions({ scale }), refetchInterval: 60_000, placeholderData: (previous) => previous });
+  const [vantage, setVantage] = useState(ALL);
+  const page = useQuery({ ...trpc.statusPage.queryOptions({ scale, vantage }), refetchInterval: 60_000, placeholderData: (previous) => previous });
   const incidents = useQuery(trpc.incidents.queryOptions({ limit: 20 }));
   const data = page.data;
 
   return (
     <div className="status-page">
-      <div className="scale-switch" role="radiogroup" aria-label="Period">
-        {STATUS_SCALE_KEYS.map((key) => (
-          <button key={key} type="button" role="radio" aria-checked={key === scale} className={`chip${key === scale ? ' chip-on' : ''}`} onClick={() => onScale(key)}>
-            {key}
-          </button>
-        ))}
+      <div className="status-controls">
+        <div className="scale-switch" role="radiogroup" aria-label="Checked from">
+          {[{ id: ALL, label: 'All vantages' }, ...(data?.vantages ?? [])].map((v) => (
+            <button
+              key={v.id}
+              type="button"
+              role="radio"
+              aria-checked={v.id === vantage}
+              className={`chip${v.id === vantage ? ' chip-on' : ''}`}
+              title={'lastCheckAt' in v ? (v.lastCheckAt ? `Last check ${timeAgo(v.lastCheckAt, now)}` : 'No checks yet') : 'A minute counts as up when any vantage reached the site'}
+              onClick={() => setVantage(v.id)}
+            >
+              {v.label}
+            </button>
+          ))}
+        </div>
+        <div className="scale-switch" role="radiogroup" aria-label="Period">
+          {STATUS_SCALE_KEYS.map((key) => (
+            <button key={key} type="button" role="radio" aria-checked={key === scale} className={`chip${key === scale ? ' chip-on' : ''}`} onClick={() => onScale(key)}>
+              {key}
+            </button>
+          ))}
+        </div>
       </div>
 
       {data ? (
@@ -140,7 +177,8 @@ export function StatusSection({ scale, onScale, now }: { scale: StatusScale; onS
           <div className={`banner banner-${statusTone(data.level)}`} role="status">
             <strong>{STATUS_LEVEL_LABELS[data.level]}</strong>
             <span className="small">
-              Checked from <span className="mono">{data.vantage}</span> every minute · updated {timeAgo(data.generatedAt, now)}
+              Checked every minute from{' '}
+              {data.vantage === ALL ? data.vantages.map((v) => v.label).join(' and ') : vantageLabel(data.vantage)} · updated {timeAgo(data.generatedAt, now)}
             </span>
           </div>
 
@@ -156,8 +194,8 @@ export function StatusSection({ scale, onScale, now }: { scale: StatusScale; onS
           ))}
           <p className="legend muted small">
             <span className="ubar ubar-great" /> ≥ 99.9 % <span className="ubar ubar-good" /> ≥ 99 % <span className="ubar ubar-fair" /> ≥ 95 %{' '}
-            <span className="ubar ubar-poor" /> &lt; 95 % <span className="ubar ubar-none" /> no data · slow answers (&gt; 2 s) count as up; TLS problems are shown but not
-            counted as outages.
+            <span className="ubar ubar-poor" /> &lt; 95 % <span className="ubar ubar-none" /> no data · a minute counts as up when any selected vantage got an
+            answer; slow answers (&gt; 2 s) count as up; TLS problems are shown but not counted as outages.
           </p>
         </>
       ) : (
@@ -173,7 +211,8 @@ export function StatusSection({ scale, onScale, now }: { scale: StatusScale; onS
             {incidents.data.map((i) => (
               <li key={i.id}>
                 <div>
-                  <Badge tone={i.resolvedAt ? 'muted' : 'bad'}>{i.resolvedAt ? 'resolved' : 'ongoing'}</Badge> <strong>{i.targetName}</strong> was down
+                  <Badge tone={i.resolvedAt ? 'muted' : 'bad'}>{i.resolvedAt ? 'resolved' : 'ongoing'}</Badge> <strong>{i.targetName}</strong> was down from{' '}
+                  {vantageLabel(i.vantage)}
                   {i.lastError && <span className="muted"> ({i.lastError})</span>}
                 </div>
                 <div className="muted small">

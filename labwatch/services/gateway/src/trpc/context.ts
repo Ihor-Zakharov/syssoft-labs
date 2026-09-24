@@ -30,7 +30,7 @@ export interface DashboardApi {
   pull(number: number): Promise<PullDetail | null>;
   sourceProbes(limit: number): Promise<SourceProbe[]>;
   events(limit: number): Promise<StoredEvent[]>;
-  statusPage(scale: StatusScale): Promise<StatusPageView>;
+  statusPage(scale: StatusScale, vantage: string): Promise<StatusPageView>;
   incidents(limit: number): Promise<StatusIncident[]>;
   integrations(): Promise<IntegrationStatus[]>;
 }

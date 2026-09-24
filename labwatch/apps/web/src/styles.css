@@ -703,8 +703,16 @@ table.compact th {
   display: grid;
   gap: 14px;
 }
+.status-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  justify-content: space-between;
+  align-items: center;
+}
 .scale-switch {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   justify-content: flex-end;
 }
@@ -765,8 +773,19 @@ table.compact th {
 }
 .target-stats {
   display: flex;
-  gap: 14px;
+  flex-wrap: wrap;
+  gap: 4px 14px;
   font-variant-numeric: tabular-nums;
+}
+.vantage-latency {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+.vantage-name {
+  font-family: var(--font, inherit);
+  color: var(--muted);
 }
 .tls-chip {
   font-size: 11px;

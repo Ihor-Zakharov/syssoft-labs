@@ -49,9 +49,17 @@ export const appRouter = t.router({
 
   events: t.procedure.input(limit(500, 50)).query(({ ctx, input }) => ctx.api.events(input.limit)),
 
+  /** `vantage`: `all` (combined) or one vantage id; unknown ids fall back to `all`. */
   statusPage: t.procedure
-    .input(z.object({ scale: z.enum(STATUS_SCALE_KEYS as [string, ...string[]]).default('24h') }).default({ scale: '24h' }))
-    .query(({ ctx, input }) => ctx.api.statusPage(input.scale as Parameters<Context['api']['statusPage']>[0])),
+    .input(
+      z
+        .object({
+          scale: z.enum(STATUS_SCALE_KEYS as [string, ...string[]]).default('24h'),
+          vantage: z.string().max(64).default('all'),
+        })
+        .default({ scale: '24h', vantage: 'all' }),
+    )
+    .query(({ ctx, input }) => ctx.api.statusPage(input.scale as Parameters<Context['api']['statusPage']>[0], input.vantage)),
 
   incidents: t.procedure.input(limit(200, 30)).query(({ ctx, input }) => ctx.api.incidents(input.limit)),
 
