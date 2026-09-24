@@ -7,4 +7,8 @@
     <Project Path="Task2/Task2.CitiesViewer.Tests/Task2.CitiesViewer.Tests.csproj" />
     <Project Path="Task2/Task2.CitiesViewer/Task2.CitiesViewer.csproj" />
   </Folder>
+  <Folder Name="/Task3/">
+    <Project Path="Task3/Task3.RegistryViewer.Tests/Task3.RegistryViewer.Tests.csproj" />
+    <Project Path="Task3/Task3.RegistryViewer/Task3.RegistryViewer.csproj" />
+  </Folder>
 </Solution>
