@@ -26,20 +26,36 @@ internal sealed class LabRegistry(RegistryLocation location)
             return new MultiStringValue(ValueState.KeyMissing, []);
         }
 
-        // Value names are case-insensitive in the registry
-        if (!key.GetValueNames().Contains(name, StringComparer.OrdinalIgnoreCase))
+        // One read decides the state: the CLR type of the returned object follows the registry type
+        // (REG_MULTI_SZ -> string[]), so there is no window between "does it exist", "which type" and "read"
+        // in which another process could delete or retype the value
+        var data = key.GetValue(name, null, RegistryValueOptions.DoNotExpandEnvironmentNames);
+        return data switch
         {
-            return new MultiStringValue(ValueState.ValueMissing, []);
-        }
+            null => new MultiStringValue(ValueState.ValueMissing, []),
+            string[] lines => new MultiStringValue(ValueState.Ok, lines, RegistryValueKind.MultiString),
+            _ => new MultiStringValue(ValueState.WrongKind, [], KindForMessage(key, name, data)),
+        };
+    }
 
-        var kind = key.GetValueKind(name);
-        if (kind != RegistryValueKind.MultiString)
+    /// <summary>Exact registry type for the error message; if the value vanished meanwhile, a type inferred from the data.</summary>
+    private static RegistryValueKind KindForMessage(RegistryKey key, string name, object data)
+    {
+        try
         {
-            return new MultiStringValue(ValueState.WrongKind, [], kind);
+            return key.GetValueKind(name);
         }
-
-        var lines = (string[]?)key.GetValue(name, null, RegistryValueOptions.DoNotExpandEnvironmentNames) ?? [];
-        return new MultiStringValue(ValueState.Ok, lines, kind);
+        catch (IOException)
+        {
+            return data switch
+            {
+                string => RegistryValueKind.String,
+                int => RegistryValueKind.DWord,
+                long => RegistryValueKind.QWord,
+                byte[] => RegistryValueKind.Binary,
+                _ => RegistryValueKind.Unknown,
+            };
+        }
     }
 
     /// <summary>

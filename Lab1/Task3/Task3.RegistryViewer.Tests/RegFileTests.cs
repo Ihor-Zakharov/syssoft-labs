@@ -20,7 +20,7 @@ public sealed class RegFileTests : IDisposable
     }
 
     [Fact]
-    public void RegExeImportsP5WithAllLines()
+    public async Task RegExeImportsP5WithAllLines()
     {
         // The same file, redirected to a temporary HKCU key so the import needs no administrator rights
         var reg = File.ReadAllText(RegFile("create-p5.reg"))
@@ -29,7 +29,7 @@ public sealed class RegFileTests : IDisposable
         File.WriteAllText(file, reg);
         try
         {
-            RunRegExe($"import \"{file}\"");
+            await RunRegExeAsync($"import \"{file}\"");
         }
         finally
         {
@@ -50,7 +50,7 @@ public sealed class RegFileTests : IDisposable
 
     private static string RegFile(string name) => Path.Combine(AppContext.BaseDirectory, "registry", name);
 
-    private static void RunRegExe(string arguments)
+    private static async Task RunRegExeAsync(string arguments)
     {
         using var process = Process.Start(new ProcessStartInfo("reg.exe", arguments)
         {
@@ -58,8 +58,14 @@ public sealed class RegFileTests : IDisposable
             RedirectStandardError = true,
             CreateNoWindow = true,
         })!;
-        var error = process.StandardError.ReadToEnd();
-        process.WaitForExit();
-        Assert.True(process.ExitCode == 0, $"reg.exe {arguments} failed: {error}");
+
+        // Drain both pipes at the same time: reading one to the end while the child blocks on the other,
+        // full pipe (~4 KB buffer) would deadlock
+        var output = process.StandardOutput.ReadToEndAsync();
+        var error = process.StandardError.ReadToEndAsync();
+        await Task.WhenAll(output, error);
+        await process.WaitForExitAsync();
+
+        Assert.True(process.ExitCode == 0, $"reg.exe {arguments} failed: {await error}{await output}");
     }
 }

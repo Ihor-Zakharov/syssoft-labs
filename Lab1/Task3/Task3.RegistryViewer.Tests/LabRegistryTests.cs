@@ -55,6 +55,36 @@ public sealed class LabRegistryTests : IDisposable
         Assert.Equal(["one", "Київ", "%PATH% stays as is"], value.Lines);
     }
 
+    [Theory]
+    [InlineData("expand %TEMP%", RegistryValueKind.ExpandString)]
+    [InlineData(42, RegistryValueKind.DWord)]
+    public void OtherValueTypesAreReportedWithTheirKind(object data, RegistryValueKind kind)
+    {
+        using (var key = _temp.Create())
+        {
+            key.SetValue("P5", data, kind);
+        }
+
+        var value = new LabRegistry(_temp.Location).ReadMultiString("P5");
+
+        Assert.Equal(ValueState.WrongKind, value.State);
+        Assert.Equal(kind, value.Kind);
+    }
+
+    [Fact]
+    public void EmptyMultiStringIsOkWithNoLines()
+    {
+        using (var key = _temp.Create())
+        {
+            key.SetValue("P5", Array.Empty<string>(), RegistryValueKind.MultiString);
+        }
+
+        var value = new LabRegistry(_temp.Location).ReadMultiString("P5");
+
+        Assert.Equal(ValueState.Ok, value.State);
+        Assert.Empty(value.Lines);
+    }
+
     [Fact]
     public void WriteCreatesKeyAndMultiStringValue()
     {

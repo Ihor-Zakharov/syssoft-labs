@@ -9,8 +9,12 @@ public sealed class TempRegistryKey : IDisposable
 
     internal RegistryLocation Location => new(RegistryHive.CurrentUser, SubKey);
 
-    public RegistryKey Create() =>
-        RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, RegistryLocation.View).CreateSubKey(SubKey, writable: true);
+    /// <summary>Creates the key; the caller disposes the returned key. The hive handle is closed right away.</summary>
+    public RegistryKey Create()
+    {
+        using var baseKey = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, RegistryLocation.View);
+        return baseKey.CreateSubKey(SubKey, writable: true);
+    }
 
     public void Dispose()
     {
