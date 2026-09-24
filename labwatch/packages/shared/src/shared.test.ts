@@ -14,6 +14,7 @@ import {
   type LatestCheck,
 } from './status.js';
 import { arrangeBranchTabs, type BranchTabInfo } from './tabs.js';
+import { integrationLevel, vendorHasTrouble, type VendorStatus } from './integrations.js';
 
 describe('areas (path → lab attribution)', () => {
   it('maps paths to areas', () => {
@@ -233,5 +234,39 @@ describe('reviews', () => {
       reviewRunOutcome(run, [post('inline', '2026-09-24T12:03:00Z'), post('inline', '2026-09-24T12:06:00Z'), post('review', '2026-09-24T12:06:00Z')], 'me'),
     ).toEqual({ kind: 'posted', findings: 2 });
     expect(reviewRunOutcome(run, [post('issue', '2026-09-24T12:03:00Z')], 'me')).toEqual({ kind: 'posted', findings: 0 });
+  });
+});
+
+describe('integrations', () => {
+  const vendor = (indicator: VendorStatus['indicator'], components: VendorStatus['components'] = [], error: string | null = null): VendorStatus => ({
+    source: 'x',
+    url: 'u',
+    indicator,
+    description: '',
+    components,
+    incidents: [],
+    checkedAt: 't',
+    error,
+  });
+
+  it('classifies the card from our connection and the vendor status', () => {
+    expect(integrationLevel({ state: 'connected' }, vendor('none'))).toEqual({ level: 'connected', label: 'Connected' });
+    expect(integrationLevel({ state: 'connected' }, null)).toEqual({ level: 'connected', label: 'Connected' });
+    expect(integrationLevel({ state: 'connected' }, vendor('minor'))).toEqual({ level: 'degraded', label: 'Degraded' });
+    expect(integrationLevel({ state: 'connected' }, vendor('none', [{ name: 'Actions', status: 'partial_outage' }])).level).toBe('degraded');
+    expect(integrationLevel({ state: 'connected' }, vendor('maintenance', [{ name: 'Pages', status: 'under_maintenance' }])).level).toBe('connected');
+    expect(integrationLevel({ state: 'connected' }, vendor('unknown', [], 'timeout')).level).toBe('connected');
+    expect(integrationLevel({ state: 'slow' }, vendor('none'))).toEqual({ level: 'degraded', label: 'Degraded' });
+    expect(integrationLevel({ state: 'auth_error' }, vendor('none'))).toEqual({ level: 'error', label: 'Auth error' });
+    expect(integrationLevel({ state: 'unreachable' }, vendor('major'))).toEqual({ level: 'error', label: 'Unreachable' });
+    expect(integrationLevel({ state: 'not_configured' }, vendor('critical'))).toEqual({ level: 'inactive', label: 'Not configured' });
+    expect(integrationLevel({ state: 'not_deployed' }, vendor('none'))).toEqual({ level: 'inactive', label: 'Not deployed yet' });
+  });
+
+  it('only counts real trouble from the vendor', () => {
+    expect(vendorHasTrouble(null)).toBe(false);
+    expect(vendorHasTrouble(vendor('critical', [], 'bad json'))).toBe(false);
+    expect(vendorHasTrouble(vendor('major'))).toBe(true);
+    expect(vendorHasTrouble(vendor('none', [{ name: 'API Requests', status: 'degraded_performance' }]))).toBe(true);
   });
 });

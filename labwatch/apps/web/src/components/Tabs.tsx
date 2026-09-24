@@ -24,7 +24,7 @@ export function TabList({
   selectedId: string | null;
   onSelect: (id: string) => void;
   label: string;
-  variant: 'primary' | 'secondary';
+  variant: 'top' | 'primary' | 'secondary';
   panelId: string;
   after?: ReactNode;
 }) {

@@ -1,6 +1,7 @@
 export * from './api.js';
 export * from './areas.js';
 export * from './ci.js';
+export * from './integrations.js';
 export * from './keys.js';
 export * from './overall.js';
 export * from './reviews.js';

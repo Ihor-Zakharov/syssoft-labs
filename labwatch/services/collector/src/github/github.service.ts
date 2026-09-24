@@ -189,17 +189,55 @@ export class GithubService implements OnModuleInit {
     return this.get('backfill', `/repos/${repo}/commits/${sha}`, (raw: RawCommitDetail) => mapCommitFiles(raw), false);
   }
 
+  /** Recent calls, for the GitHub integration card (latency, last error). */
+  private readonly recent: Array<{ at: number; ms: number }> = [];
+  private lastOkAt: number | null = null;
+  private lastError: { at: number; status: number | null; message: string } | null = null;
+
+  stats(): { avgLatencyMs: number | null; calls: number; lastOkAt: string | null; lastError: { at: string; status: number | null; message: string } | null } {
+    const avg = this.recent.length ? Math.round(this.recent.reduce((s, c) => s + c.ms, 0) / this.recent.length) : null;
+    return {
+      avgLatencyMs: avg,
+      calls: this.recent.length,
+      lastOkAt: this.lastOkAt ? new Date(this.lastOkAt).toISOString() : null,
+      lastError: this.lastError ? { ...this.lastError, at: new Date(this.lastError.at).toISOString() } : null,
+    };
+  }
+
+  rateLimitSnapshot() {
+    return this.budget.snapshot();
+  }
+
   private async get<Raw, T>(priority: Priority, path: string, map: (raw: Raw) => T, cache = true): Promise<FetchResult<T>> {
     if (!this.budget.tryAcquire(priority)) {
       throw new BudgetExceededError(priority, this.budget.msUntilAvailable(priority));
     }
+    const started = performance.now();
     try {
       const result = await this.client.getJson(path, map, cache);
+      this.recordCall(started, null);
       await this.track(result.rateLimit);
       return result;
     } catch (error) {
-      if (error instanceof GithubHttpError) await this.track(error.rateLimit);
+      if (error instanceof GithubHttpError) {
+        // An HTTP answer (even 404) proves the API is reachable; 401 means the token is bad
+        this.recordCall(started, error.status === 401 ? { status: 401, message: 'Bad credentials' } : null);
+        await this.track(error.rateLimit);
+      } else {
+        this.recordCall(started, { status: null, message: error instanceof Error ? error.message : String(error) });
+      }
       throw error;
+    }
+  }
+
+  private recordCall(started: number, error: { status: number | null; message: string } | null): void {
+    const now = Date.now();
+    this.recent.push({ at: now, ms: performance.now() - started });
+    if (this.recent.length > 10) this.recent.shift();
+    if (error) this.lastError = { at: now, ...error };
+    else {
+      this.lastOkAt = now;
+      this.lastError = null;
     }
   }
 

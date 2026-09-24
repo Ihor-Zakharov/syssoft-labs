@@ -27,6 +27,12 @@ const EnvSchema = z.object({
   SOURCE_EXPECTED_CERT_SHA256: z.string().default(PINNED_CERT_SHA256),
   /** Set to an empty string to skip the content check. */
   SOURCE_EXPECTED_BODY_SHA256: z.string().default(KNOWN_BODY_SHA256),
+  /** Read-only HCP Terraform team/organization token (optional). */
+  HCP_TERRAFORM_TOKEN: z.string().optional(),
+  HCP_TERRAFORM_ORG: z.string().default('zakharov-syssoft'),
+  /** Region whose AWS Health events are shown on the AWS card. */
+  AWS_HEALTH_REGION: z.string().default('eu-central-1'),
+  INTEGRATIONS_INTERVAL_S: z.coerce.number().int().min(60).default(300),
   STATUS_ENABLED: bool,
   STATUS_VANTAGE: z.string().regex(/^[a-z0-9-]+$/).default(DEFAULT_VANTAGE),
   STATUS_INTERVAL_S: z.coerce.number().int().min(10).default(60),
@@ -46,6 +52,12 @@ export interface CollectorConfig {
   sourceUrl: string;
   expectedCertSha256: string;
   expectedBodySha256: string | null;
+  integrations: {
+    hcpTerraformToken: string | undefined;
+    hcpTerraformOrg: string;
+    awsHealthRegion: string;
+    intervalMs: number;
+  };
   status: {
     enabled: boolean;
     vantage: string;
@@ -77,6 +89,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): CollectorConfi
     sourceUrl: parsed.SOURCE_URL,
     expectedCertSha256: parsed.SOURCE_EXPECTED_CERT_SHA256,
     expectedBodySha256: parsed.SOURCE_EXPECTED_BODY_SHA256.trim() || null,
+    integrations: {
+      hcpTerraformToken: parsed.HCP_TERRAFORM_TOKEN?.trim() || undefined,
+      hcpTerraformOrg: parsed.HCP_TERRAFORM_ORG,
+      awsHealthRegion: parsed.AWS_HEALTH_REGION,
+      intervalMs: parsed.INTEGRATIONS_INTERVAL_S * 1000,
+    },
     status: {
       enabled: parsed.STATUS_ENABLED,
       vantage: parsed.STATUS_VANTAGE,

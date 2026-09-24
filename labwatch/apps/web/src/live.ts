@@ -31,6 +31,8 @@ export function useLiveUpdates(): { state: LiveState; lastUpdate: string | null 
         return [trpc.overview, trpc.sourceProbes];
       case 'status':
         return [trpc.overview, trpc.statusPage, trpc.incidents];
+      case 'integrations':
+        return [trpc.integrations];
       case 'events':
         return [trpc.events];
       case 'health':

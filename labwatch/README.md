@@ -34,8 +34,8 @@ Built as practice for a production stack: **NestJS microservices, tRPC, PostgreS
                                     │ /trpc (HTTP batch + SSE)
         ┌───────────────────────────┴──────────────────────────────────┐
         │ web (React + Vite + TanStack Query), served by nginx :8080   │
-        │  service cards · lab source · events (always visible)        │
-        │  CI runs | Commits | Pull requests | Status                  │
+        │  System: services · lab source · events · integrations       │
+        │  Repository: CI runs | Commits | Pull requests | Status      │
         │    Overview | main | branch tabs …                           │
         └──────────────────────────────────────────────────────────────┘
 ```
@@ -72,8 +72,30 @@ container plus a Docker build of every image (`.github/workflows/labwatch.yml`, 
 
 ## The dashboard
 
-Two rows of tabs; the URL hash keeps both (`#ci/overview`, `#commits/branch/lab1-task3`, `#status/24h`), so
-reload and back/forward work. Tabs are keyboard accessible (arrow keys, Home/End).
+Two top-level tabs; the URL hash keeps the position (`#system`, `#repo/ci/overview`,
+`#repo/commits/branch/lab1-task3`, `#repo/status/24h`), so reload and back/forward work. Hashes from
+before the split (`#ci/overview`, `#status/24h`, …) are redirected to their `#repo/…` form. All tabs are
+keyboard accessible (arrow keys, Home/End), and switching tabs never shifts the layout: the scrollbar
+gutter is reserved, tab captions reserve their bold width, tables use fixed column widths.
+
+### System
+
+- The four service cards (collector, gateway, postgres, redis — up/down, heartbeat age or ping latency,
+  version), the `manual.txt` source card (HTTP, content hash, pinned certificate, TLS check, latency history,
+  uptime) and the event feed.
+- **Integrations** — one card per external service, with two levels: *our connection* and the *vendor's own
+  status*. Card colour: Connected (green), Degraded (yellow: the vendor reports an incident or a watched
+  component is not operational, or our calls are slow), Auth error / Unreachable (red), Not configured / Not
+  deployed yet (grey). Results are kept in Redis (`status:integration:<id>`); a card turning red or back is an
+  `integration.down` / `integration.up` event.
+
+| Integration | Our connection | Vendor status (every 5 min) |
+|---|---|---|
+| GitHub | token present and accepted, rate limit (remaining/limit, reset), labwatch's hourly budget, average API latency of the last calls — no extra requests | githubstatus.com: overall indicator, API Requests, Actions, Pages, Git Operations, open incidents |
+| HCP Terraform | with `HCP_TERRAFORM_TOKEN` (read-only team/organization token) every 5 min: the workspaces of `HCP_TERRAFORM_ORG` (execution mode, lock, resource count, current state version); without it "Not configured" | status.hashicorp.com: HCP Terraform, Terraform Registry, HCP API |
+| AWS | "Not deployed yet" — once the AWS status prober exists, its latest check will be read from DynamoDB with a read-only key (behind the `AwsProbeReader` interface) | AWS Health public events for `AWS_HEALTH_REGION` (an undocumented UTF-16 feed; "n/a" when it cannot be read) |
+
+### Repository
 
 **Primary row:** `CI runs` · `Commits` · `Pull requests` · `Status`.
 
@@ -84,11 +106,6 @@ success, red failure, yellow running, grey none — from the runs of the branch 
 findings on its PR. The Overview dot is the worst of: CI on main, the status page, the services and the
 source. The selected branch is kept when switching sections.
 
-- **Always on top**, whatever tab is selected: the four service cards (collector, gateway, postgres, redis —
-  up/down, heartbeat age or ping latency, version), the `manual.txt` source card (HTTP, content hash, pinned
-  certificate, TLS check, latency history, uptime) and the event feed. The header shows the GitHub budget
-  ("GitHub API 12/40 (no token)") and any current issues. The layout does not shift between tabs: the
-  scrollbar gutter is reserved, tab captions reserve their bold width, tables use fixed column widths.
 - **CI runs:** runs with job badges, test totals and — for `Code review` runs — what the review posted. Expand
   a run for its jobs and steps (with durations and log links), the test report of the commit (totals, per
   test assembly and suite, failure annotations; "No test report" when there is none) and the review outcome.
@@ -171,6 +188,7 @@ The schema and the page are per vantage point, so a cloud vantage (e.g. `aws-eu-
 | `status:prs:<repo>` | the PR list |
 | `status:source` | last probe of `manual.txt` with pin/hash verdicts |
 | `status:checks:<vantage>` | hash: latest status-page check per site |
+| `status:integration:<id>` | GitHub / AWS / HCP Terraform: our connection and the vendor status |
 | `health:<service>` | heartbeat, expires after 45 s → "down" without any prober |
 | `github:requests`, `github:budget` | request times of the rolling hour, budget configuration |
 | `github:ratelimit` | GitHub's own quota and reset time |
@@ -215,6 +233,8 @@ what `Lab1/Task1` does in C#.
 | `STATUS_ENABLED`, `STATUS_VANTAGE`, `STATUS_INTERVAL_S`, `STATUS_TIMEOUT_MS` | `true`, `home`, `60`, `10000` | collector |
 | `STATUS_DEGRADED_MS`, `STATUS_RETENTION_DAYS` | `2000`, `120` | collector |
 | `STATUS_TIMEZONE` | `Europe/Kyiv` | gateway |
+| `HCP_TERRAFORM_TOKEN`, `HCP_TERRAFORM_ORG` | empty (Not configured), `zakharov-syssoft` | collector |
+| `AWS_HEALTH_REGION`, `INTEGRATIONS_INTERVAL_S` | `eu-central-1`, `300` | collector |
 
 Every container has a `mem_limit` (Postgres 1 GB, Redis 512 MB, Node services 320 MB with a 192 MB heap, nginx 64 MB):
 under WSL an out-of-memory situation would otherwise take down the whole VM.

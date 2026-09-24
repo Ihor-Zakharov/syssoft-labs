@@ -147,13 +147,14 @@ h3 {
   font-family: var(--mono);
 }
 .break {
-  word-break: break-all;
+  overflow-wrap: break-word;
 }
 .text-bad {
   color: var(--bad);
 }
 .clip {
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+  min-width: 0;
 }
 
 .banner {
@@ -181,7 +182,8 @@ h3 {
 
 .facts {
   display: grid;
-  grid-template-columns: max-content 1fr;
+  /* One key/value pair per row: keys as wide as needed, values get the rest and wrap by words */
+  grid-template-columns: max-content minmax(0, 1fr);
   gap: 6px 14px;
   margin: 10px 0;
 }
@@ -190,6 +192,8 @@ h3 {
 }
 .facts dd {
   margin: 0;
+  min-width: 0;
+  overflow-wrap: break-word;
 }
 
 .badge {
@@ -385,15 +389,17 @@ tr:last-child td {
 .tabs-secondary .tab {
   padding: 7px 12px;
   font-size: 13px;
+  font-weight: 500;
   background: var(--tab-bg);
   border: 1px solid var(--border);
   border-bottom: none;
   border-radius: 8px 8px 0 0;
 }
 .tabs-secondary .tab-selected {
+  /* Browser-like: the selected tab is marked by its background and colour, never by a bolder
+     font (a different weight changes the text width by sub-pixels and nudges the neighbours) */
   background: var(--surface);
   color: var(--text);
-  font-weight: 600;
   position: relative;
   top: 1px;
   padding-bottom: 8px;
@@ -659,7 +665,8 @@ table.compact th {
   padding: 0 6px;
 }
 .md {
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+  min-width: 0;
 }
 .md p {
   margin: 6px 0;
@@ -913,8 +920,117 @@ table.fixed {
   min-width: 900px;
 }
 table.fixed td {
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 .top-issues {
   color: var(--bad);
+}
+
+/* ── Top-level tabs: System | Repository ───────────────────────────────── */
+.tabs-top {
+  margin: 2px 0 16px;
+}
+.tabs-top .tablist {
+  background: var(--muted-bg);
+  border-radius: 10px;
+  padding: 3px;
+  gap: 3px;
+}
+.tabs-top .tab {
+  padding: 7px 18px;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+}
+.tabs-top .tab-selected {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.18);
+}
+.system {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
+}
+.system .top-section {
+  margin-bottom: 0;
+}
+
+/* ── Integrations ─────────────────────────────────────────────────────── */
+.section-title {
+  font-size: 16px;
+  margin: 0 0 10px;
+}
+.integrations {
+  display: grid;
+  /* Side by side on wide screens, stacked on narrow ones */
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.integration {
+  border-top: 3px solid var(--border);
+}
+.integration-connected {
+  border-top-color: var(--ok);
+}
+.integration-degraded {
+  border-top-color: var(--dot-warn);
+}
+.integration-error {
+  border-top-color: var(--bad);
+}
+.integration p {
+  margin: 4px 0;
+}
+.level-title {
+  margin: 14px 0 4px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+.integration .facts {
+  column-gap: 12px;
+  row-gap: 3px;
+  margin: 6px 0;
+}
+/* The <div> around each dt/dd pair is only for valid markup: its children join the dl's grid */
+.fact {
+  display: contents;
+}
+.hint {
+  background: var(--muted-bg);
+  border-radius: 6px;
+  padding: 6px 10px;
+  color: var(--muted);
+}
+.vendor-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.vendor-line a {
+  margin-left: auto;
+}
+.components {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 3px;
+}
+.components li {
+  display: grid;
+  grid-template-columns: 9px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+.incidents li {
+  padding: 4px 0;
+}
+.checked {
+  margin-top: 12px !important;
 }

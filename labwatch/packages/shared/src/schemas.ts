@@ -216,6 +216,8 @@ export const EVENT_KINDS = [
   'service.up',
   'status.down',
   'status.up',
+  'integration.down',
+  'integration.up',
 ] as const;
 export const EventKindSchema = z.enum(EVENT_KINDS);
 export type EventKind = z.infer<typeof EventKindSchema>;
@@ -244,6 +246,7 @@ export const UPDATE_TOPICS = [
   'checks',
   'source',
   'status',
+  'integrations',
   'health',
   'events',
   'ratelimit',

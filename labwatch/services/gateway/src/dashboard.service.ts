@@ -4,6 +4,7 @@ import {
   ApiBudgetSchema,
   EVENTS_STREAM,
   HeartbeatSchema,
+  INTEGRATION_IDS,
   LabEventSchema,
   RateLimitSchema,
   RedisKeys,
@@ -17,6 +18,7 @@ import {
   type CiRunDetail,
   type CiRunRow,
   type CommitsView,
+  type IntegrationStatus,
   type Overview,
   type PullDetail,
   type PullRow,
@@ -137,6 +139,19 @@ export class DashboardService implements DashboardApi {
 
   incidents(limit: number): Promise<StatusIncident[]> {
     return this.status.incidents(limit);
+  }
+
+  /** Latest check per integration (written by the collector); not checked yet → omitted. */
+  async integrations(): Promise<IntegrationStatus[]> {
+    const raws = await this.redis.mget(INTEGRATION_IDS.map((id) => RedisKeys.integration(id))).catch(() => []);
+    return raws.flatMap((raw) => {
+      if (!raw) return [];
+      try {
+        return [JSON.parse(raw) as IntegrationStatus];
+      } catch {
+        return [];
+      }
+    });
   }
 
   async sourceProbes(limit: number): Promise<SourceProbe[]> {

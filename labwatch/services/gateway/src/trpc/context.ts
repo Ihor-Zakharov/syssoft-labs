@@ -4,6 +4,7 @@ import type {
   CiRunDetail,
   CiRunRow,
   CommitsView,
+  IntegrationStatus,
   Overview,
   PullDetail,
   PullRow,
@@ -31,6 +32,7 @@ export interface DashboardApi {
   events(limit: number): Promise<StoredEvent[]>;
   statusPage(scale: StatusScale): Promise<StatusPageView>;
   incidents(limit: number): Promise<StatusIncident[]>;
+  integrations(): Promise<IntegrationStatus[]>;
 }
 
 export interface UpdatesSource {

@@ -21,6 +21,10 @@ export const RedisKeys = {
   sourceStatus: 'status:source',
   /** Latest check per target for one vantage (hash: target → StatusCheck JSON). */
   statusLatest: (vantage: string) => `status:checks:${vantage}`,
+  /** Latest check of an external integration (IntegrationStatus JSON). */
+  integration: (id: string) => `status:integration:${id}`,
+  /** Last known integration levels, for change detection. */
+  integrationState: 'state:integrations',
   rateLimit: 'github:ratelimit',
   /** Sorted set of request timestamps (score = ms) for the rolling-hour budget. */
   apiRequests: 'github:requests',

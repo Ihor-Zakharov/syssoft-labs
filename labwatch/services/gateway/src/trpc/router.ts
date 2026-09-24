@@ -55,6 +55,9 @@ export const appRouter = t.router({
 
   incidents: t.procedure.input(limit(200, 30)).query(({ ctx, input }) => ctx.api.incidents(input.limit)),
 
+  /** GitHub, AWS, HCP Terraform: our connection and the vendor's own status. */
+  integrations: t.procedure.query(({ ctx }) => ctx.api.integrations()),
+
   /** Server-sent events: which part of the dashboard changed. */
   updates: t.procedure.subscription(async function* ({ ctx, signal }) {
     yield* ctx.updates.stream(signal);
