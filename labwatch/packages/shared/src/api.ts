@@ -20,6 +20,7 @@ export interface ServiceHealth {
 /** GitHub requests made by labwatch in the last rolling hour vs its own budget. */
 export interface ApiUsage {
   authenticated: boolean;
+  tokenRejected: boolean;
   used: number;
   budgetPerHour: number;
   /** What GitHub itself reports for this token / IP. */

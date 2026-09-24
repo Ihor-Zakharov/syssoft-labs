@@ -26,8 +26,8 @@ export const RedisKeys = {
   /** Last known integration levels, for change detection. */
   integrationState: 'state:integrations',
   rateLimit: 'github:ratelimit',
-  /** Sorted set of request timestamps (score = ms) for the rolling-hour budget. */
-  apiRequests: 'github:requests',
+  /** Sorted set of request timestamps (score = ms) for the rolling-hour budget, one per mode. */
+  apiRequests: (authenticated: boolean) => (authenticated ? 'github:requests:token' : 'github:requests:anonymous'),
   /** The collector's budget configuration (ApiBudget JSON). */
   apiBudget: 'github:budget',
   etag: (url: string) => `etag:${url}`,

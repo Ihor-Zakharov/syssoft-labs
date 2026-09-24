@@ -1,5 +1,7 @@
+import { INTEGRATION_SLOW_MS } from '@labwatch/shared';
 import type {
   IntegrationLevel,
+  OurConnection,
   IntegrationStatus,
   LabEvent,
   TerraformWorkspace,
@@ -206,4 +208,60 @@ export function diffIntegrations(prev: IntegrationLevels | null, current: readon
     }
   }
   return { next, events };
+}
+
+// ── GitHub: our connection, from the collector's own calls ─────────────────
+
+export interface GithubCallStats {
+  avgLatencyMs: number | null;
+  calls: number;
+  lastOkAt: string | null;
+  lastError: { at: string; status: number | null; message: string } | null;
+}
+
+export interface GithubBudgetSnapshot {
+  used: number;
+  budgetPerHour: number;
+  remote: { limit: number; remaining: number; resetAt: string } | null;
+}
+
+function utcTime(iso: string | null): string {
+  return iso ? new Date(iso).toISOString().slice(11, 16) + ' UTC' : '—';
+}
+
+/**
+ * A rejected token is an auth error even though the collector keeps working anonymously; a failed
+ * call without an HTTP answer means unreachable; slow calls mean degraded.
+ */
+export function githubConnection(input: {
+  tokenConfigured: boolean;
+  tokenRejected: boolean;
+  authenticated: boolean;
+  stats: GithubCallStats;
+  budget: GithubBudgetSnapshot;
+}): OurConnection {
+  const { stats, budget } = input;
+  const remote = budget.remote;
+  const tokenText = input.tokenRejected ? 'rejected (401), running anonymously' : input.authenticated ? 'present, authenticated' : 'none (anonymous)';
+  const facts = [
+    { label: 'Token', value: tokenText },
+    { label: 'Rate limit', value: remote ? `${remote.remaining}/${remote.limit} left, resets ${utcTime(remote.resetAt)}` : 'not observed yet' },
+    { label: 'labwatch budget', value: `${budget.used}/${budget.budgetPerHour} this hour` },
+    { label: 'API latency', value: stats.avgLatencyMs !== null ? `${stats.avgLatencyMs} ms (last ${stats.calls} calls)` : 'no calls yet' },
+  ];
+  const base = { checkedAt: stats.lastOkAt ?? stats.lastError?.at ?? null, latencyMs: stats.avgLatencyMs, facts };
+  if (input.tokenRejected || stats.lastError?.status === 401) {
+    return {
+      ...base,
+      state: 'auth_error',
+      summary: `GitHub rejected the token (401); continuing without it (${budget.budgetPerHour} requests/hour)`,
+      hint: 'Put a new token into .env as GITHUB_TOKEN and restart the collector: docker compose up -d collector.',
+    };
+  }
+  const hint = input.authenticated ? null : 'Add a fine-grained read-only GITHUB_TOKEN to .env for 2000 requests/hour.';
+  if (stats.lastError) return { ...base, state: 'unreachable', summary: `Last call failed: ${stats.lastError.message}`, hint };
+  if (stats.avgLatencyMs !== null && stats.avgLatencyMs > INTEGRATION_SLOW_MS) {
+    return { ...base, state: 'slow', summary: `API calls are slow (${stats.avgLatencyMs} ms)`, hint };
+  }
+  return { ...base, state: 'connected', summary: input.authenticated ? 'Authenticated API access' : `Anonymous API access (${budget.budgetPerHour} requests/hour budget)`, hint };
 }

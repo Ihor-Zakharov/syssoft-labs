@@ -62,14 +62,17 @@ const ETAG_TTL_S = 24 * 60 * 60;
 @Injectable()
 export class GithubService implements OnModuleInit {
   private readonly logger = new Logger(GithubService.name);
-  private readonly client: EtagClient;
-  readonly budget: RequestBudget;
+  private readonly cache: EtagCache;
+  private client: EtagClient;
+  private budgetImpl: RequestBudget;
+  /** The configured token was rejected (401): running anonymously until the collector restarts with a new one. */
+  private tokenRejected = false;
 
   constructor(
-    @Inject(CONFIG) config: CollectorConfig,
+    @Inject(CONFIG) private readonly config: CollectorConfig,
     @Inject(REDIS) private readonly redis: Redis,
   ) {
-    const cache: EtagCache = {
+    this.cache = {
       get: async <T>(url: string) => {
         const raw = await redis.get(RedisKeys.etag(url));
         return raw === null ? null : (JSON.parse(raw) as CachedResponse<T>);
@@ -78,34 +81,73 @@ export class GithubService implements OnModuleInit {
         await redis.set(RedisKeys.etag(url), JSON.stringify(value), 'EX', ETAG_TTL_S);
       },
     };
-    this.client = new EtagClient({
-      fetch: globalThis.fetch,
-      cache,
-      token: config.githubToken,
-      userAgent: `labwatch-collector/${VERSION}`,
-    });
-    const budgetPerHour = this.client.authenticated ? config.authBudgetPerHour : config.unauthBudgetPerHour;
-    this.budget = new RequestBudget({ budgetPerHour, onGrant: (at) => void this.persistGrant(at) });
+    this.client = this.createClient(config.githubToken);
+    this.budgetImpl = this.createBudget();
     this.logger.log(
       this.client.authenticated
-        ? `Using GITHUB_TOKEN: budget ${budgetPerHour} requests/hour`
-        : `No GITHUB_TOKEN: budget ${budgetPerHour} of GitHub's 60 requests/hour, slow polling`,
+        ? `Using GITHUB_TOKEN: budget ${this.budgetImpl.budgetPerHour} requests/hour`
+        : `No GITHUB_TOKEN: budget ${this.budgetImpl.budgetPerHour} of GitHub's 60 requests/hour, slow polling`,
     );
   }
 
+  private createClient(token: string | undefined): EtagClient {
+    return new EtagClient({ fetch: globalThis.fetch, cache: this.cache, token, userAgent: `labwatch-collector/${VERSION}` });
+  }
+
+  private createBudget(): RequestBudget {
+    const budgetPerHour = this.client.authenticated ? this.config.authBudgetPerHour : this.config.unauthBudgetPerHour;
+    return new RequestBudget({ budgetPerHour, onGrant: (at) => void this.persistGrant(at) });
+  }
+
+  /** The request budget of the current mode (token or anonymous). */
+  get budget(): RequestBudget {
+    return this.budgetImpl;
+  }
+
   async onModuleInit(): Promise<void> {
-    // Continue the rolling window of the previous process: a restart must not reset the budget
+    await this.loadWindow();
+  }
+
+  /** Continue the rolling window of the previous process: a restart must not reset the budget. */
+  private async loadWindow(): Promise<void> {
+    const key = RedisKeys.apiRequests(this.authenticated);
     const since = Date.now() - HOUR_MS;
-    await this.redis.zremrangebyscore(RedisKeys.apiRequests, '-inf', since);
-    const stamps = await this.redis.zrangebyscore(RedisKeys.apiRequests, since, '+inf', 'WITHSCORES');
-    this.budget.seed(stamps.filter((_, i) => i % 2 === 1).map(Number));
-    const budget: ApiBudget = { authenticated: this.authenticated, budgetPerHour: this.budget.budgetPerHour, windowMs: HOUR_MS };
+    await this.redis.zremrangebyscore(key, '-inf', since);
+    const stamps = await this.redis.zrangebyscore(key, since, '+inf', 'WITHSCORES');
+    this.budgetImpl.seed(stamps.filter((_, i) => i % 2 === 1).map(Number));
+    const budget: ApiBudget = {
+      authenticated: this.authenticated,
+      budgetPerHour: this.budgetImpl.budgetPerHour,
+      windowMs: HOUR_MS,
+      tokenRejected: this.tokenRejected,
+    };
     await this.redis.set(RedisKeys.apiBudget, JSON.stringify(budget));
-    this.logger.log(`GitHub requests in the last hour: ${this.budget.used()}/${this.budget.budgetPerHour}`);
+    this.logger.log(`GitHub requests in the last hour: ${this.budgetImpl.used()}/${this.budgetImpl.budgetPerHour}`);
   }
 
   get authenticated(): boolean {
     return this.client.authenticated;
+  }
+
+  get tokenConfigured(): boolean {
+    return Boolean(this.config.githubToken);
+  }
+
+  get isTokenRejected(): boolean {
+    return this.tokenRejected;
+  }
+
+  /**
+   * A revoked or expired token must not stop the collector: continue anonymously with the
+   * anonymous budget (and its own request window). The GitHub card shows "Auth error" meanwhile.
+   */
+  private async degradeToAnonymous(): Promise<void> {
+    if (!this.authenticated) return;
+    this.tokenRejected = true;
+    this.client = this.createClient(undefined);
+    this.budgetImpl = this.createBudget();
+    this.logger.warn(`GitHub rejected the token (401): continuing without it, budget ${this.budgetImpl.budgetPerHour} requests/hour`);
+    await this.loadWindow();
   }
 
   get intervals(): PollIntervals {
@@ -114,7 +156,7 @@ export class GithubService implements OnModuleInit {
 
   /** Whether a call of this priority would be granted right now (no request is made). */
   canCall(priority: Priority): boolean {
-    return this.budget.msUntilAvailable(priority) === 0;
+    return this.budgetImpl.msUntilAvailable(priority) === 0;
   }
 
   // ci
@@ -205,12 +247,13 @@ export class GithubService implements OnModuleInit {
   }
 
   rateLimitSnapshot() {
-    return this.budget.snapshot();
+    return this.budgetImpl.snapshot();
   }
 
   private async get<Raw, T>(priority: Priority, path: string, map: (raw: Raw) => T, cache = true): Promise<FetchResult<T>> {
-    if (!this.budget.tryAcquire(priority)) {
-      throw new BudgetExceededError(priority, this.budget.msUntilAvailable(priority));
+    const budget = this.budgetImpl;
+    if (!budget.tryAcquire(priority)) {
+      throw new BudgetExceededError(priority, budget.msUntilAvailable(priority));
     }
     const started = performance.now();
     try {
@@ -222,7 +265,8 @@ export class GithubService implements OnModuleInit {
       if (error instanceof GithubHttpError) {
         // An HTTP answer (even 404) proves the API is reachable; 401 means the token is bad
         this.recordCall(started, error.status === 401 ? { status: 401, message: 'Bad credentials' } : null);
-        await this.track(error.rateLimit);
+        if (error.status === 401 && this.authenticated) await this.degradeToAnonymous();
+        else await this.track(error.rateLimit);
       } else {
         this.recordCall(started, { status: null, message: error instanceof Error ? error.message : String(error) });
       }
@@ -242,9 +286,10 @@ export class GithubService implements OnModuleInit {
   }
 
   private async persistGrant(at: number): Promise<void> {
+    const key = RedisKeys.apiRequests(this.authenticated);
     try {
-      await this.redis.zadd(RedisKeys.apiRequests, at, `${at}-${randomUUID().slice(0, 8)}`);
-      await this.redis.zremrangebyscore(RedisKeys.apiRequests, '-inf', at - HOUR_MS);
+      await this.redis.zadd(key, at, `${at}-${randomUUID().slice(0, 8)}`);
+      await this.redis.zremrangebyscore(key, '-inf', at - HOUR_MS);
     } catch (error) {
       this.logger.warn(`Could not persist the request budget: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -252,7 +297,7 @@ export class GithubService implements OnModuleInit {
 
   private async track(info: RateLimitInfo | null): Promise<void> {
     if (!info) return;
-    this.budget.observe(info);
+    this.budgetImpl.observe(info);
     const rate: RateLimit = { authenticated: this.authenticated, ...info, observedAt: new Date().toISOString() };
     await this.redis.set(RedisKeys.rateLimit, JSON.stringify(rate));
   }

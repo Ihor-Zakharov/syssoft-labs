@@ -215,7 +215,7 @@ export function App() {
           </span>
           {api && (
             <span className="muted" title={api.resetAt ? `GitHub reports ${api.remaining}/${api.limit} left, resets ${formatDate(api.resetAt)}` : undefined}>
-              GitHub API {api.used}/{api.budgetPerHour} ({api.authenticated ? 'token' : 'no token'})
+              GitHub API {api.used}/{api.budgetPerHour} ({api.authenticated ? 'token' : api.tokenRejected ? 'token rejected' : 'no token'})
             </span>
           )}
         </div>

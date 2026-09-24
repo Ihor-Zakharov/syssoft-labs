@@ -17,6 +17,7 @@ import { REDIS } from '../infra/tokens.js';
 import {
   decodeAwsHealth,
   diffIntegrations,
+  githubConnection,
   missingComponents,
   parseAwsHealth,
   parseStatuspage,
@@ -55,10 +56,6 @@ export class NotDeployedAwsProbe implements AwsProbeReader {
       facts: [],
     };
   }
-}
-
-function time(iso: string | null): string {
-  return iso ? new Date(iso).toISOString().slice(11, 16) + ' UTC' : '—';
 }
 
 @Injectable()
@@ -115,24 +112,13 @@ export class IntegrationsService {
 
   /** GitHub needs no extra requests: token, quota and latency come from the collector's own calls. */
   private githubConnection(): OurConnection {
-    const stats = this.github.stats();
-    const budget = this.github.rateLimitSnapshot();
-    const token = this.github.authenticated;
-    const remote = budget.remote;
-    const facts = [
-      { label: 'Token', value: token ? 'present, authenticated' : 'none (anonymous)' },
-      { label: 'Rate limit', value: remote ? `${remote.remaining}/${remote.limit} left, resets ${time(remote.resetAt)}` : 'not observed yet' },
-      { label: 'labwatch budget', value: `${budget.used}/${budget.budgetPerHour} this hour` },
-      { label: 'API latency', value: stats.avgLatencyMs !== null ? `${stats.avgLatencyMs} ms (last ${stats.calls} calls)` : 'no calls yet' },
-    ];
-    const base = { checkedAt: stats.lastOkAt ?? stats.lastError?.at ?? null, latencyMs: stats.avgLatencyMs, facts };
-    const hint = token ? null : 'Add a fine-grained read-only GITHUB_TOKEN to .env for 2000 requests/hour.';
-    if (stats.lastError?.status === 401) return { ...base, state: 'auth_error', summary: 'GitHub rejected the token (401)', hint: 'Check GITHUB_TOKEN in .env.' };
-    if (stats.lastError) return { ...base, state: 'unreachable', summary: `Last call failed: ${stats.lastError.message}`, hint };
-    if (stats.avgLatencyMs !== null && stats.avgLatencyMs > INTEGRATION_SLOW_MS) {
-      return { ...base, state: 'slow', summary: `API calls are slow (${stats.avgLatencyMs} ms)`, hint };
-    }
-    return { ...base, state: 'connected', summary: token ? 'Authenticated API access' : 'Anonymous API access (40 requests/hour budget)', hint };
+    return githubConnection({
+      tokenConfigured: this.github.tokenConfigured,
+      tokenRejected: this.github.isTokenRejected,
+      authenticated: this.github.authenticated,
+      stats: this.github.stats(),
+      budget: this.github.rateLimitSnapshot(),
+    });
   }
 
   private async hcpTerraform(): Promise<OurConnection> {

@@ -91,12 +91,13 @@ export class DashboardService implements DashboardApi {
     const budget = await this.json(RedisKeys.apiBudget, ApiBudgetSchema);
     if (!budget) return null;
     const [used, rate] = await Promise.all([
-      this.redis.zcount(RedisKeys.apiRequests, Date.now() - budget.windowMs, '+inf').catch(() => 0),
+      this.redis.zcount(RedisKeys.apiRequests(budget.authenticated), Date.now() - budget.windowMs, '+inf').catch(() => 0),
       this.json(RedisKeys.rateLimit, RateLimitSchema),
     ]);
     const rateMatches = rate !== null && rate.authenticated === budget.authenticated;
     return {
       authenticated: budget.authenticated,
+      tokenRejected: budget.tokenRejected,
       used,
       budgetPerHour: budget.budgetPerHour,
       remaining: rateMatches ? rate.remaining : null,

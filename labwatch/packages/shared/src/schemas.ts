@@ -180,6 +180,8 @@ export const ApiBudgetSchema = z.object({
   authenticated: z.boolean(),
   budgetPerHour: z.number(),
   windowMs: z.number(),
+  /** A token is configured but GitHub rejected it: running anonymously. */
+  tokenRejected: z.boolean().default(false),
 });
 export type ApiBudget = z.infer<typeof ApiBudgetSchema>;
 
