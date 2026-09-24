@@ -1,3 +1,13 @@
+/* Reserve the scrollbar's space all the time: content height changes between tabs must not shift the page */
+html {
+  scrollbar-gutter: stable;
+}
+@supports not (scrollbar-gutter: stable) {
+  html {
+    overflow-y: scroll;
+  }
+}
+
 :root {
   --bg: #f6f7f9;
   --surface: #ffffff;
@@ -342,7 +352,6 @@ tr:last-child td {
 .tab:focus-visible,
 .chip:focus-visible,
 .expander:focus-visible,
-.strip-button:focus-visible,
 .uptime-bars:focus-visible,
 .menu-item:focus-visible {
   outline: 2px solid var(--link);
@@ -380,7 +389,6 @@ tr:last-child td {
   border: 1px solid var(--border);
   border-bottom: none;
   border-radius: 8px 8px 0 0;
-  max-width: 240px;
 }
 .tabs-secondary .tab-selected {
   background: var(--surface);
@@ -389,10 +397,6 @@ tr:last-child td {
   position: relative;
   top: 1px;
   padding-bottom: 8px;
-}
-.tab-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 .tab-count,
 .count {
@@ -456,53 +460,6 @@ tr:last-child td {
   display: grid;
   gap: 14px;
   padding-top: 14px;
-}
-
-/* ── Summary strip ────────────────────────────────────────────────────── */
-.strip-wrap {
-  display: grid;
-  gap: 10px;
-}
-.strip {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 18px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 8px 14px;
-}
-.strip-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-.strip-issues {
-  font-weight: 600;
-}
-.service {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  margin-right: 10px;
-}
-.strip-button {
-  font: inherit;
-  color: inherit;
-  background: none;
-  border: 0;
-  padding: 2px 4px;
-  border-radius: 6px;
-  cursor: pointer;
-}
-.strip-button:hover {
-  background: var(--muted-bg);
-}
-.strip-events {
-  margin-left: auto;
-  max-width: 100%;
 }
 
 /* ── Tables, rows, details ────────────────────────────────────────────── */
@@ -854,4 +811,110 @@ table.compact th {
   height: 10px;
   margin: 0 3px 0 8px;
   vertical-align: -1px;
+}
+
+/* ── Top section (always visible above the tabs) ─────────────────────── */
+.top-section {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+@media (max-width: 860px) {
+  .tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.tile {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  min-width: 0;
+}
+.tile header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tile header .small {
+  margin-left: auto;
+}
+.tile-state {
+  margin: 6px 0 2px;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--ok);
+}
+.tile-down {
+  border-color: var(--bad);
+}
+.tile-down .tile-state {
+  color: var(--bad);
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+@media (max-width: 860px) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.bars {
+  width: 100%;
+  height: 40px;
+  margin-top: 4px;
+}
+.bar-ok {
+  fill: var(--ok);
+  opacity: 0.75;
+}
+.bar-bad {
+  fill: var(--bad);
+}
+/* The events card lists up to 30 events: scroll inside instead of pushing the tabs down */
+.top-section .feed {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+/* ── Layout stability ─────────────────────────────────────────────────── */
+/* Grid tracks never grow with their content (a wide table scrolls inside its card instead) */
+.panel,
+.detail,
+.status-page {
+  grid-template-columns: minmax(0, 1fr);
+}
+/* Bold text is wider: reserve the bold width in every tab label so selecting a tab moves nothing */
+.tab-label {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+}
+.tab-label::after {
+  content: attr(data-text);
+  font-weight: 600;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  user-select: none;
+  pointer-events: none;
+}
+/* Fixed column widths: live updates and switching tabs do not re-flow the columns */
+table.fixed {
+  table-layout: fixed;
+  min-width: 900px;
+}
+table.fixed td {
+  overflow-wrap: anywhere;
+}
+.top-issues {
+  color: var(--bad);
 }

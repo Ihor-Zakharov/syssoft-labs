@@ -34,6 +34,7 @@ Built as practice for a production stack: **NestJS microservices, tRPC, PostgreS
                                     │ /trpc (HTTP batch + SSE)
         ┌───────────────────────────┴──────────────────────────────────┐
         │ web (React + Vite + TanStack Query), served by nginx :8080   │
+        │  service cards · lab source · events (always visible)        │
         │  CI runs | Commits | Pull requests | Status                  │
         │    Overview | main | branch tabs …                           │
         └──────────────────────────────────────────────────────────────┘
@@ -83,9 +84,11 @@ success, red failure, yellow running, grey none — from the runs of the branch 
 findings on its PR. The Overview dot is the worst of: CI on main, the status page, the services and the
 source. The selected branch is kept when switching sections.
 
-- **Overview** starts with a summary strip: service dots (collector, gateway, postgres, redis), the
-  `manual.txt` source (click for the full card with latency history), GitHub API usage
-  ("GitHub API: 12/40 this hour (no token)") and the latest events (click to expand).
+- **Always on top**, whatever tab is selected: the four service cards (collector, gateway, postgres, redis —
+  up/down, heartbeat age or ping latency, version), the `manual.txt` source card (HTTP, content hash, pinned
+  certificate, TLS check, latency history, uptime) and the event feed. The header shows the GitHub budget
+  ("GitHub API 12/40 (no token)") and any current issues. The layout does not shift between tabs: the
+  scrollbar gutter is reserved, tab captions reserve their bold width, tables use fixed column widths.
 - **CI runs:** runs with job badges, test totals and — for `Code review` runs — what the review posted. Expand
   a run for its jobs and steps (with durations and log links), the test report of the commit (totals, per
   test assembly and suite, failure annotations; "No test report" when there is none) and the review outcome.

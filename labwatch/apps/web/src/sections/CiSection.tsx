@@ -181,7 +181,17 @@ export function CiSection({ branch, now }: { branch: string | null; now: number 
         <p className="muted">No runs collected{branch ? ' for this branch' : ''} yet.</p>
       ) : (
         <div className="table-wrap">
-          <table>
+          <table className="fixed">
+            <colgroup>
+              <col style={{ width: 40 }} />
+              <col style={{ width: 104 }} />
+              <col style={{ width: 170 }} />
+              {!branch && <col style={{ width: 150 }} />}
+              <col />
+              <col style={{ width: 200 }} />
+              <col style={{ width: 84 }} />
+              <col style={{ width: 84 }} />
+            </colgroup>
             <thead>
               <tr>
                 <th aria-label="Details" />

@@ -140,7 +140,15 @@ export function PullsSection({ branch, now }: { branch: string | null; now: numb
         <p className="muted">{branch ? 'No pull request for this branch.' : 'No pull requests collected yet.'}</p>
       ) : (
         <div className="table-wrap">
-          <table>
+          <table className="fixed">
+            <colgroup>
+              <col style={{ width: 40 }} />
+              <col />
+              {!branch && <col style={{ width: 150 }} />}
+              <col style={{ width: 250 }} />
+              <col style={{ width: 230 }} />
+              <col style={{ width: 84 }} />
+            </colgroup>
             <thead>
               <tr>
                 <th aria-label="Details" />
