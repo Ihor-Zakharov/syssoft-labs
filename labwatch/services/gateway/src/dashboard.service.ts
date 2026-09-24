@@ -1,8 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { ciJobs, ciRuns, commits, events, pullRequests, sourceProbes, type DbHandle } from '@labwatch/infra';
+import { ciRuns, events, sourceProbes, type DbHandle } from '@labwatch/infra';
 import {
-  CiStatusSchema,
-  CommitsStatusSchema,
+  ApiBudgetSchema,
   EVENTS_STREAM,
   HeartbeatSchema,
   LabEventSchema,
@@ -10,29 +9,38 @@ import {
   RedisKeys,
   SERVICES,
   SourceStatusSchema,
-  type Branch,
+  ciStateOf,
+  overallStatus,
+  type ApiUsage,
+  type BranchesView,
   type CiJob,
-  type CiRun,
-  type CiStatus,
+  type CiRunDetail,
+  type CiRunRow,
   type CommitsView,
   type Overview,
-  type PullRequest,
+  type PullDetail,
+  type PullRow,
   type ServiceHealth,
   type SourceProbe,
+  type StatusIncident,
+  type StatusPageView,
+  type StatusScale,
   type StoredEvent,
 } from '@labwatch/shared';
-import { asc, desc, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import type { Redis } from 'ioredis';
 import type { ZodType } from 'zod';
 import { CONFIG, type GatewayConfig } from './config.js';
 import { DB, REDIS } from './infra/tokens.js';
 import { serviceHealth } from './logic/health.js';
+import { RepoService } from './repo.service.js';
+import { StatusService } from './status.service.js';
 import type { DashboardApi } from './trpc/context.js';
 
 const iso = (d: Date) => d.toISOString();
 const isoOrNull = (d: Date | null) => (d === null ? null : d.toISOString());
 
-/** Reads: current state from Redis (fast, small), history from Postgres. */
+/** The tRPC API: current state from Redis (fast, small), history from Postgres. */
 @Injectable()
 export class DashboardService implements DashboardApi {
   private readonly logger = new Logger(DashboardService.name);
@@ -41,54 +49,94 @@ export class DashboardService implements DashboardApi {
     @Inject(CONFIG) private readonly config: GatewayConfig,
     @Inject(REDIS) private readonly redis: Redis,
     @Inject(DB) private readonly db: DbHandle,
+    private readonly repo: RepoService,
+    private readonly status: StatusService,
   ) {}
 
   async overview(): Promise<Overview> {
-    const [heartbeats, postgres, redis, source, ci, rateLimit] = await Promise.all([
+    const [heartbeats, postgres, redis, source, api, statusLevel, commitsStatus] = await Promise.all([
       Promise.all(SERVICES.map(async (name) => serviceHealth(name, await this.json(RedisKeys.health(name), HeartbeatSchema)))),
       this.pingPostgres(),
       this.pingRedis(),
       this.json(RedisKeys.sourceStatus, SourceStatusSchema),
-      Promise.all(this.config.repos.map((repo) => this.json(RedisKeys.ciStatus(repo), CiStatusSchema))),
-      this.json(RedisKeys.rateLimit, RateLimitSchema),
+      this.apiUsage(),
+      this.status.level().catch(() => 'no_data' as const),
+      this.repo.commitsStatus(),
     ]);
+    const defaultBranch = commitsStatus?.defaultBranch ?? this.config.defaultBranch;
+    const mainHead = commitsStatus?.branches.find((b) => b.name === defaultBranch)?.headSha;
+    const mainRuns = mainHead
+      ? await this.db.db.select().from(ciRuns).where(and(eq(ciRuns.repo, this.config.repo), eq(ciRuns.headSha, mainHead)))
+      : [];
+    const mainCi = ciStateOf(mainRuns);
+    const services = [...heartbeats, postgres, redis];
+
     return {
       generatedAt: new Date().toISOString(),
       repos: this.config.repos,
-      services: [...heartbeats, postgres, redis],
+      defaultBranch,
+      services,
       source,
-      ci: ci.filter((s): s is CiStatus => s !== null),
-      rateLimit,
+      api,
+      statusLevel,
+      mainCi,
+      overall: overallStatus({ services, sourceOk: source?.ok ?? null, mainCi, statusLevel }),
     };
   }
 
-  async ciRuns(limit: number): Promise<CiRun[]> {
-    const rows = await this.db.db.select().from(ciRuns).orderBy(desc(ciRuns.createdAt)).limit(limit);
-    return rows.map((r) => ({
-      ...r,
-      createdAt: iso(r.createdAt),
-      updatedAt: iso(r.updatedAt),
-      runStartedAt: isoOrNull(r.runStartedAt),
-    }));
-  }
-
-  async ciJobs(runId: number): Promise<CiJob[]> {
-    const rows = await this.db.db.select().from(ciJobs).where(eq(ciJobs.runId, runId)).orderBy(asc(ciJobs.startedAt));
-    return rows.map((r) => ({ ...r, startedAt: isoOrNull(r.startedAt), completedAt: isoOrNull(r.completedAt) }));
-  }
-
-  async commits(limit: number): Promise<CommitsView> {
-    const [rows, statuses] = await Promise.all([
-      this.db.db.select().from(commits).orderBy(desc(commits.committedAt)).limit(limit),
-      Promise.all(this.config.repos.map((repo) => this.json(RedisKeys.commitsStatus(repo), CommitsStatusSchema))),
+  /** Requests in the last rolling hour (from the collector's sorted set) against its budget. */
+  private async apiUsage(): Promise<ApiUsage | null> {
+    const budget = await this.json(RedisKeys.apiBudget, ApiBudgetSchema);
+    if (!budget) return null;
+    const [used, rate] = await Promise.all([
+      this.redis.zcount(RedisKeys.apiRequests, Date.now() - budget.windowMs, '+inf').catch(() => 0),
+      this.json(RedisKeys.rateLimit, RateLimitSchema),
     ]);
-    const branches: Branch[] = statuses.flatMap((s) => s?.branches ?? []);
-    return { branches, commits: rows.map((r) => ({ ...r, committedAt: iso(r.committedAt) })) };
+    const rateMatches = rate !== null && rate.authenticated === budget.authenticated;
+    return {
+      authenticated: budget.authenticated,
+      used,
+      budgetPerHour: budget.budgetPerHour,
+      remaining: rateMatches ? rate.remaining : null,
+      limit: rateMatches ? rate.limit : null,
+      resetAt: rateMatches ? rate.resetAt : null,
+    };
   }
 
-  async pulls(limit: number): Promise<PullRequest[]> {
-    const rows = await this.db.db.select().from(pullRequests).orderBy(desc(pullRequests.updatedAt)).limit(limit);
-    return rows.map((r) => ({ ...r, createdAt: iso(r.createdAt), updatedAt: iso(r.updatedAt) }));
+  branches(): Promise<BranchesView> {
+    return this.repo.branches();
+  }
+
+  ciRuns(args: { branch: string | null; limit: number }): Promise<CiRunRow[]> {
+    return this.repo.ciRuns(args);
+  }
+
+  ciRun(runId: number): Promise<CiRunDetail | null> {
+    return this.repo.ciRun(runId);
+  }
+
+  ciJobs(runId: number): Promise<CiJob[]> {
+    return this.repo.ciJobs(runId);
+  }
+
+  commits(args: { branch: string | null; limit: number }): Promise<CommitsView> {
+    return this.repo.commits(args);
+  }
+
+  pulls(args: { branch: string | null; limit: number }): Promise<PullRow[]> {
+    return this.repo.pulls(args);
+  }
+
+  pull(number: number): Promise<PullDetail | null> {
+    return this.repo.pull(number);
+  }
+
+  statusPage(scale: StatusScale): Promise<StatusPageView> {
+    return this.status.statusPage(scale);
+  }
+
+  incidents(limit: number): Promise<StatusIncident[]> {
+    return this.status.incidents(limit);
   }
 
   async sourceProbes(limit: number): Promise<SourceProbe[]> {

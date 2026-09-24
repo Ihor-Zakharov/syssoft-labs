@@ -1,10 +1,16 @@
 import type {
+  BranchesView,
   CiJob,
-  CiRun,
+  CiRunDetail,
+  CiRunRow,
   CommitsView,
   Overview,
-  PullRequest,
+  PullDetail,
+  PullRow,
   SourceProbe,
+  StatusIncident,
+  StatusPageView,
+  StatusScale,
   StoredEvent,
   UpdateMessage,
 } from '@labwatch/shared';
@@ -14,12 +20,17 @@ import type {
 
 export interface DashboardApi {
   overview(): Promise<Overview>;
-  ciRuns(limit: number): Promise<CiRun[]>;
+  branches(): Promise<BranchesView>;
+  ciRuns(args: { branch: string | null; limit: number }): Promise<CiRunRow[]>;
+  ciRun(runId: number): Promise<CiRunDetail | null>;
   ciJobs(runId: number): Promise<CiJob[]>;
-  commits(limit: number): Promise<CommitsView>;
-  pulls(limit: number): Promise<PullRequest[]>;
+  commits(args: { branch: string | null; limit: number }): Promise<CommitsView>;
+  pulls(args: { branch: string | null; limit: number }): Promise<PullRow[]>;
+  pull(number: number): Promise<PullDetail | null>;
   sourceProbes(limit: number): Promise<SourceProbe[]>;
   events(limit: number): Promise<StoredEvent[]>;
+  statusPage(scale: StatusScale): Promise<StatusPageView>;
+  incidents(limit: number): Promise<StatusIncident[]>;
 }
 
 export interface UpdatesSource {
