@@ -1,4 +1,4 @@
-import type { LabEvent, StatusOutcome } from '@labwatch/shared';
+import { DEFAULT_VANTAGE, vantageLabel, type LabEvent, type StatusOutcome } from '@labwatch/shared';
 import type { HttpCheckResult } from './http-check.js';
 
 export interface ClassifyOptions {
@@ -40,11 +40,16 @@ export function formatDuration(seconds: number): string {
   return `${hours} h ${minutes % 60} min`;
 }
 
+/** " (from AWS Frankfurt)" for vantages other than this PC, so the events tell the vantages apart. */
+function fromVantage(vantage: string): string {
+  return vantage === DEFAULT_VANTAGE ? '' : ` (from ${vantageLabel(vantage)})`;
+}
+
 export function statusDownEvent(target: { id: string; name: string; url: string }, vantage: string, reason: string, at: Date): LabEvent {
   return {
     kind: 'status.down',
     severity: 'error',
-    title: `${target.name} is down: ${reason}`,
+    title: `${target.name} is down${fromVantage(vantage)}: ${reason}`,
     at: at.toISOString(),
     data: { target: target.id, vantage, url: target.url, reason },
   };
@@ -54,7 +59,7 @@ export function statusUpEvent(target: { id: string; name: string; url: string },
   return {
     kind: 'status.up',
     severity: 'info',
-    title: `${target.name} recovered after ${formatDuration(downForS)}`,
+    title: `${target.name} recovered${fromVantage(vantage)} after ${formatDuration(downForS)}`,
     at: at.toISOString(),
     data: { target: target.id, vantage, url: target.url, downForS },
   };

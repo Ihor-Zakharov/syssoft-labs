@@ -3,10 +3,11 @@ import { statusChecks, type DbHandle } from '@labwatch/infra';
 import { RedisKeys, STATUS_TARGETS, type LabEvent, type StatusCheck } from '@labwatch/shared';
 import type { Redis } from 'ioredis';
 import { CONFIG, VERSION, type CollectorConfig } from '../config.js';
+import { IncidentTracker } from '../infra/incidents.js';
 import { StatusStore } from '../infra/status-store.js';
 import { DB, REDIS } from '../infra/tokens.js';
 import { httpCheck } from '../logic/http-check.js';
-import { classifyCheck, failureReason, incidentAction, statusDownEvent, statusUpEvent } from '../logic/status-check.js';
+import { classifyCheck, failureReason } from '../logic/status-check.js';
 import { PollingService } from './polling-service.js';
 
 const RETENTION_EVERY_MS = 60 * 60 * 1000;
@@ -21,6 +22,7 @@ export class StatusPoller extends PollingService {
     @Inject(DB) private readonly db: DbHandle,
     @Inject(REDIS) private readonly redis: Redis,
     private readonly store: StatusStore,
+    private readonly incidents: IncidentTracker,
   ) {
     super('StatusPoller', 3_000);
   }
@@ -69,7 +71,7 @@ export class StatusPoller extends PollingService {
 
     const events: LabEvent[] = [];
     for (const { target, result, check } of results) {
-      const event = await this.updateIncident(target, check, failureReason(result));
+      const event = await this.incidents.apply(target, check, failureReason(result));
       if (event) events.push(event);
     }
     await this.store.emit(events);
@@ -79,38 +81,6 @@ export class StatusPoller extends PollingService {
 
     // Keep a steady cadence: the next round starts one interval after this one started
     return Math.max(1_000, intervalMs - (Date.now() - started));
-  }
-
-  /** Opens an incident on the transition to down, resolves it on recovery; returns the event to emit. */
-  private async updateIncident(target: (typeof STATUS_TARGETS)[number], check: StatusCheck, reason: string): Promise<LabEvent | null> {
-    const at = new Date(check.checkedAt);
-    const { rows: open } = await this.db.pool.query<{ id: number; started_at: Date }>(
-      'select id, started_at from status_incidents where target = $1 and vantage = $2 and resolved_at is null',
-      [target.id, check.vantage],
-    );
-    switch (incidentAction(check.outcome, open.length > 0)) {
-      case 'open': {
-        const { rows } = await this.db.pool.query(
-          `insert into status_incidents (target, vantage, started_at, failed_checks, last_error)
-           values ($1, $2, $3, 1, $4) on conflict do nothing returning id`,
-          [target.id, check.vantage, at, reason],
-        );
-        return rows.length > 0 ? statusDownEvent(target, check.vantage, reason, at) : null;
-      }
-      case 'extend':
-        await this.db.pool.query('update status_incidents set failed_checks = failed_checks + 1, last_error = $2 where id = $1', [
-          open[0]!.id,
-          reason,
-        ]);
-        return null;
-      case 'resolve': {
-        await this.db.pool.query('update status_incidents set resolved_at = $2 where id = $1', [open[0]!.id, at]);
-        const downForS = Math.round((at.getTime() - open[0]!.started_at.getTime()) / 1000);
-        return statusUpEvent(target, check.vantage, downForS, at);
-      }
-      case 'none':
-        return null;
-    }
   }
 
   private async retention(): Promise<void> {

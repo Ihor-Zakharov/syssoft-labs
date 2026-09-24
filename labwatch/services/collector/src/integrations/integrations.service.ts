@@ -1,7 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   INTEGRATION_NAMES,
-  INTEGRATION_SLOW_MS,
   RedisKeys,
   integrationLevel,
   type IntegrationId,
@@ -14,6 +13,7 @@ import { CONFIG, VERSION, type CollectorConfig } from '../config.js';
 import { GithubService } from '../github/github.service.js';
 import { StatusStore } from '../infra/status-store.js';
 import { REDIS } from '../infra/tokens.js';
+import { hcpTerraformConnection } from '../logic/hcp.js';
 import {
   decodeAwsHealth,
   diffIntegrations,
@@ -21,7 +21,6 @@ import {
   missingComponents,
   parseAwsHealth,
   parseStatuspage,
-  parseTfWorkspaces,
   vendorError,
   type IntegrationLevels,
 } from '../logic/integrations.js';
@@ -128,59 +127,9 @@ export class IntegrationsService {
     });
   }
 
-  private async hcpTerraform(): Promise<OurConnection> {
+  private hcpTerraform(): Promise<OurConnection> {
     const { hcpTerraformToken: token, hcpTerraformOrg: org } = this.config.integrations;
-    const orgFact = { label: 'Organization', value: org };
-    if (!token) {
-      return {
-        state: 'not_configured',
-        summary: 'No HCP Terraform token',
-        hint: 'State lives in HCP Terraform, but labwatch has no token to read it. Create an organization token (Organization settings → API tokens; the Free plan has no read-only token type) and add it as HCP_TERRAFORM_TOKEN to .env.',
-        checkedAt: null,
-        latencyMs: null,
-        facts: [orgFact],
-      };
-    }
-    const started = performance.now();
-    const checkedAt = new Date().toISOString();
-    try {
-      const response = await fetch(
-        `https://app.terraform.io/api/v2/organizations/${encodeURIComponent(org)}/workspaces?include=current_state_version&page%5Bsize%5D=50`,
-        {
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/vnd.api+json', 'User-Agent': `labwatch-collector/${VERSION}` },
-          signal: AbortSignal.timeout(TIMEOUT_MS),
-        },
-      );
-      const latencyMs = Math.round(performance.now() - started);
-      if (response.status === 401 || response.status === 403) {
-        return { state: 'auth_error', summary: `HCP Terraform rejected the token (${response.status})`, hint: 'Check HCP_TERRAFORM_TOKEN.', checkedAt, latencyMs, facts: [orgFact] };
-      }
-      if (response.status === 404) {
-        return { state: 'auth_error', summary: `Organization "${org}" not found or not visible to this token`, hint: 'Check HCP_TERRAFORM_ORG and the token’s team access.', checkedAt, latencyMs, facts: [orgFact] };
-      }
-      if (!response.ok) {
-        return { state: 'unreachable', summary: `HCP Terraform answered HTTP ${response.status}`, hint: null, checkedAt, latencyMs, facts: [orgFact] };
-      }
-      const workspaces = parseTfWorkspaces((await response.json()) as Parameters<typeof parseTfWorkspaces>[0]);
-      return {
-        state: latencyMs > INTEGRATION_SLOW_MS ? 'slow' : 'connected',
-        summary: `${workspaces.length} workspace${workspaces.length === 1 ? '' : 's'}`,
-        hint: null,
-        checkedAt,
-        latencyMs,
-        facts: [orgFact, { label: 'API latency', value: `${latencyMs} ms` }],
-        workspaces,
-      };
-    } catch (error) {
-      return {
-        state: 'unreachable',
-        summary: `HCP Terraform unreachable: ${error instanceof Error ? error.message : String(error)}`,
-        hint: null,
-        checkedAt,
-        latencyMs: null,
-        facts: [orgFact],
-      };
-    }
+    return hcpTerraformConnection({ token, org, userAgent: `labwatch-collector/${VERSION}`, timeoutMs: TIMEOUT_MS });
   }
 
   private async statuspage(key: string, meta: { source: string; url: string; watched: readonly string[] }): Promise<VendorStatus> {

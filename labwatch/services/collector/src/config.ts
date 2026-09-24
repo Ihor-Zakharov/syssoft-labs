@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module';
 import { databaseUrlFromEnv, redisUrlFromEnv } from '@labwatch/infra';
-import { DEFAULT_VANTAGE } from '@labwatch/shared';
+import { AWS_VANTAGE, DEFAULT_VANTAGE } from '@labwatch/shared';
 import { z } from 'zod';
 
 export const VERSION: string = (createRequire(import.meta.url)('../package.json') as { version: string }).version;
@@ -33,6 +33,13 @@ const EnvSchema = z.object({
   /** Region whose AWS Health events are shown on the AWS card. */
   AWS_HEALTH_REGION: z.string().default('eu-central-1'),
   INTEGRATIONS_INTERVAL_S: z.coerce.number().int().min(60).default(300),
+  /** The AWS prober (Lambda → DynamoDB). Credentials are the SDK's standard AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY. */
+  AWS_REGION: z.string().default('eu-central-1'),
+  AWS_STATUS_TABLE: z.string().default('syssoft-labs-status-checks'),
+  AWS_STATUS_VANTAGE: z.string().regex(/^[a-z0-9-]+$/).default(AWS_VANTAGE),
+  AWS_STATUS_SYNC_INTERVAL_S: z.coerce.number().int().min(30).default(120),
+  /** How far back the very first sync reaches (later syncs continue from the last synced check). */
+  AWS_STATUS_BACKFILL_HOURS: z.coerce.number().int().min(1).max(24 * 120).default(24),
   STATUS_ENABLED: bool,
   STATUS_VANTAGE: z.string().regex(/^[a-z0-9-]+$/).default(DEFAULT_VANTAGE),
   STATUS_INTERVAL_S: z.coerce.number().int().min(10).default(60),
@@ -57,6 +64,15 @@ export interface CollectorConfig {
     hcpTerraformOrg: string;
     awsHealthRegion: string;
     intervalMs: number;
+  };
+  aws: {
+    /** Both credential variables are set (their values stay in the environment, the SDK reads them). */
+    configured: boolean;
+    region: string;
+    table: string;
+    vantage: string;
+    syncIntervalMs: number;
+    backfillHours: number;
   };
   status: {
     enabled: boolean;
@@ -94,6 +110,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): CollectorConfi
       hcpTerraformOrg: parsed.HCP_TERRAFORM_ORG,
       awsHealthRegion: parsed.AWS_HEALTH_REGION,
       intervalMs: parsed.INTEGRATIONS_INTERVAL_S * 1000,
+    },
+    aws: {
+      configured: Boolean(env.AWS_ACCESS_KEY_ID?.trim() && env.AWS_SECRET_ACCESS_KEY?.trim()),
+      region: parsed.AWS_REGION,
+      table: parsed.AWS_STATUS_TABLE,
+      vantage: parsed.AWS_STATUS_VANTAGE,
+      syncIntervalMs: parsed.AWS_STATUS_SYNC_INTERVAL_S * 1000,
+      backfillHours: parsed.AWS_STATUS_BACKFILL_HOURS,
     },
     status: {
       enabled: parsed.STATUS_ENABLED,
