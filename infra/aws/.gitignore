@@ -1,0 +1,12 @@
+# Terraform working files and local state (state lives in S3 after bootstrap)
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+
+# Personal values (email etc.); an example is committed instead
+*.tfvars
+!*.tfvars.example
+
+# .terraform.lock.hcl IS committed: it pins provider versions and checksums
