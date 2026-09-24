@@ -22,7 +22,7 @@ internal static class LabValues
         ValueState.ValueMissing =>
             $@"Value {name} not found in {location}. Import Lab1\Task3\registry\create-p5.reg first.",
         ValueState.WrongKind =>
-            $"{name} has type {value.Kind}, expected MultiString (REG_MULTI_SZ).",
+            $"{name} is not of type MultiString (REG_MULTI_SZ).",
         _ => $"{name}: {value.Lines.Length} line(s)",
     };
 }

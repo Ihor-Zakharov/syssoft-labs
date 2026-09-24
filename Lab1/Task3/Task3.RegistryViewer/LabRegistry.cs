@@ -10,7 +10,7 @@ internal enum ValueState
     WrongKind,
 }
 
-internal sealed record MultiStringValue(ValueState State, string[] Lines, RegistryValueKind? Kind = null);
+internal sealed record MultiStringValue(ValueState State, string[] Lines);
 
 internal sealed class LabRegistry(RegistryLocation location)
 {
@@ -26,36 +26,13 @@ internal sealed class LabRegistry(RegistryLocation location)
             return new MultiStringValue(ValueState.KeyMissing, []);
         }
 
-        // One read decides the state: the CLR type of the returned object follows the registry type
-        // (REG_MULTI_SZ -> string[]), so there is no window between "does it exist", "which type" and "read"
-        // in which another process could delete or retype the value
-        var data = key.GetValue(name, null, RegistryValueOptions.DoNotExpandEnvironmentNames);
-        return data switch
+        // One read decides the state: a REG_MULTI_SZ value comes back as string[]
+        return key.GetValue(name, null, RegistryValueOptions.DoNotExpandEnvironmentNames) switch
         {
             null => new MultiStringValue(ValueState.ValueMissing, []),
-            string[] lines => new MultiStringValue(ValueState.Ok, lines, RegistryValueKind.MultiString),
-            _ => new MultiStringValue(ValueState.WrongKind, [], KindForMessage(key, name, data)),
+            string[] lines => new MultiStringValue(ValueState.Ok, lines),
+            _ => new MultiStringValue(ValueState.WrongKind, []),
         };
-    }
-
-    /// <summary>Exact registry type for the error message; if the value vanished meanwhile, a type inferred from the data.</summary>
-    private static RegistryValueKind KindForMessage(RegistryKey key, string name, object data)
-    {
-        try
-        {
-            return key.GetValueKind(name);
-        }
-        catch (IOException)
-        {
-            return data switch
-            {
-                string => RegistryValueKind.String,
-                int => RegistryValueKind.DWord,
-                long => RegistryValueKind.QWord,
-                byte[] => RegistryValueKind.Binary,
-                _ => RegistryValueKind.Unknown,
-            };
-        }
     }
 
     /// <summary>
@@ -64,12 +41,6 @@ internal sealed class LabRegistry(RegistryLocation location)
     /// </summary>
     public void WriteMultiString(string name, IReadOnlyList<string> lines)
     {
-        // REG_MULTI_SZ is "a\0b\0\0": an empty string would end the list early and hide the lines after it
-        if (lines.Any(line => line.Length == 0 || line.Contains('\0')))
-        {
-            throw new ArgumentException("REG_MULTI_SZ cannot contain empty strings or NUL characters.", nameof(lines));
-        }
-
         using var baseKey = RegistryKey.OpenBaseKey(location.Hive, RegistryLocation.View);
         using var key = baseKey.CreateSubKey(location.SubKey, writable: true);
         key.SetValue(name, lines.ToArray(), RegistryValueKind.MultiString);
