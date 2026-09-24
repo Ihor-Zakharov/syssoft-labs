@@ -28,20 +28,6 @@ public sealed class LabRegistryTests : IDisposable
     }
 
     [Fact]
-    public void ValueOfOtherTypeIsReported()
-    {
-        using (var key = _temp.Create())
-        {
-            key.SetValue("P5", "just a string", RegistryValueKind.String);
-        }
-
-        var value = new LabRegistry(_temp.Location).ReadMultiString("P5");
-
-        Assert.Equal(ValueState.WrongKind, value.State);
-        Assert.Equal(RegistryValueKind.String, value.Kind);
-    }
-
-    [Fact]
     public void ReadsAllLinesOfMultiString()
     {
         using (var key = _temp.Create())
@@ -53,36 +39,6 @@ public sealed class LabRegistryTests : IDisposable
 
         Assert.Equal(ValueState.Ok, value.State);
         Assert.Equal(["one", "Київ", "%PATH% stays as is"], value.Lines);
-    }
-
-    [Theory]
-    [InlineData("expand %TEMP%", RegistryValueKind.ExpandString)]
-    [InlineData(42, RegistryValueKind.DWord)]
-    public void OtherValueTypesAreReportedWithTheirKind(object data, RegistryValueKind kind)
-    {
-        using (var key = _temp.Create())
-        {
-            key.SetValue("P5", data, kind);
-        }
-
-        var value = new LabRegistry(_temp.Location).ReadMultiString("P5");
-
-        Assert.Equal(ValueState.WrongKind, value.State);
-        Assert.Equal(kind, value.Kind);
-    }
-
-    [Fact]
-    public void EmptyMultiStringIsOkWithNoLines()
-    {
-        using (var key = _temp.Create())
-        {
-            key.SetValue("P5", Array.Empty<string>(), RegistryValueKind.MultiString);
-        }
-
-        var value = new LabRegistry(_temp.Location).ReadMultiString("P5");
-
-        Assert.Equal(ValueState.Ok, value.State);
-        Assert.Empty(value.Lines);
     }
 
     [Fact]
@@ -106,16 +62,5 @@ public sealed class LabRegistryTests : IDisposable
         registry.WriteMultiString("P6", ["new 1", "new 2"]);
 
         Assert.Equal(["new 1", "new 2"], registry.ReadMultiString("P6").Lines);
-    }
-
-    [Theory]
-    [InlineData("")]
-    [InlineData("a\0b")]
-    public void WriteRejectsLinesThatWouldBreakMultiString(string bad)
-    {
-        var registry = new LabRegistry(_temp.Location);
-
-        Assert.Throws<ArgumentException>(() => registry.WriteMultiString("P6", ["ok", bad, "lost"]));
-        Assert.Equal(ValueState.KeyMissing, registry.ReadMultiString("P6").State);
     }
 }

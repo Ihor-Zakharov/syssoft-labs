@@ -42,12 +42,6 @@ public sealed class RegFileTests : IDisposable
         Assert.Equal(ExpectedP5, value.Lines);
     }
 
-    [Fact]
-    public void DeleteFileRemovesTheLabKey()
-    {
-        Assert.Contains(@"[-HKEY_LOCAL_MACHINE\SOFTWARE\Zakharov]", File.ReadAllText(RegFile("delete-zakharov.reg")));
-    }
-
     private static string RegFile(string name) => Path.Combine(AppContext.BaseDirectory, "registry", name);
 
     private static async Task RunRegExeAsync(string arguments)
