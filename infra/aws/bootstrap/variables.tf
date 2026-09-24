@@ -16,6 +16,16 @@ variable "github_repository" {
   default     = "Ihor-Zakharov/syssoft-labs"
 }
 
+variable "github_oidc_subject" {
+  description = <<-EOT
+    Prefix of the "sub" claim in the repository's GitHub OIDC tokens. The repository uses immutable subjects,
+    repo:<owner>@<owner id>/<repo>@<repo id>: a repository deleted and re-created under the same name gets new ids
+    and cannot assume these roles. Check with: gh api repos/<owner>/<repo>/actions/oidc/customization/sub
+  EOT
+  type        = string
+  default     = "repo:Ihor-Zakharov@109134305/syssoft-labs@1385280233"
+}
+
 variable "budget_email" {
   description = "Where the zero-spend alert is sent (set in terraform.tfvars, which is not committed)."
   type        = string

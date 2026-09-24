@@ -33,8 +33,8 @@ data "aws_iam_policy_document" "trust_plan" {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
       values = [
-        "repo:${var.github_repository}:pull_request",
-        "repo:${var.github_repository}:ref:refs/heads/*",
+        "${var.github_oidc_subject}:pull_request",
+        "${var.github_oidc_subject}:ref:refs/heads/*",
       ]
     }
   }
@@ -56,7 +56,7 @@ data "aws_iam_policy_document" "trust_deploy" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repository}:ref:refs/heads/main"]
+      values   = ["${var.github_oidc_subject}:ref:refs/heads/main"]
     }
   }
 }
