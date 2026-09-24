@@ -1,0 +1,6 @@
+<Solution>
+  <Folder Name="/Task1/">
+    <Project Path="Task1/Task1.Downloader.Tests/Task1.Downloader.Tests.csproj" />
+    <Project Path="Task1/Task1.Downloader/Task1.Downloader.csproj" />
+  </Folder>
+</Solution>
