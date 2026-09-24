@@ -1,0 +1,146 @@
+name: infra
+
+# AWS infrastructure (Terraform, state in HCP Terraform, execution mode Local).
+#  - pull request: fmt, validate, Lambda tests, `terraform plan` of the status stack with the read-only plan role
+#  - push to main: the same checks, then `terraform apply` of the status stack with the deploy role
+# The bootstrap stack (OIDC roles, budget) is never applied from CI: it holds CI's own permissions.
+# AWS access is OIDC only (no stored AWS keys). Needs: repository variables AWS_PLAN_ROLE_ARN and
+# AWS_DEPLOY_ROLE_ARN (outputs of the bootstrap stack) and the secret TF_API_TOKEN (HCP Terraform token).
+
+on:
+  pull_request:
+    paths: ['infra/aws/**', '.github/workflows/infra.yml']
+  push:
+    branches: [main]
+    paths: ['infra/aws/**', '.github/workflows/infra.yml']
+
+permissions:
+  contents: read
+
+# Never cancel a running apply halfway
+concurrency:
+  group: infra-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  TF_IN_AUTOMATION: 'true'
+  TF_INPUT: 'false'
+  TF_VERSION: 1.16.4
+  AWS_REGION: eu-central-1
+
+jobs:
+  checks:
+    name: fmt, validate, tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: terraform fmt
+        run: terraform fmt -check -recursive infra/aws
+
+      - name: terraform validate
+        run: |
+          for stack in bootstrap status; do
+            terraform -chdir=infra/aws/$stack init -backend=false
+            terraform -chdir=infra/aws/$stack validate
+          done
+
+      - name: Lambda unit tests
+        working-directory: infra/aws/status/lambda
+        run: node --test 'test/**/*.test.mjs'
+
+  plan:
+    name: plan (status)
+    needs: checks
+    # Same-repository PRs only: PRs from forks get neither secrets nor OIDC tokens
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_PLAN_ROLE_ARN }}
+          role-session-name: gha-plan-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: terraform plan
+        working-directory: infra/aws/status
+        run: |
+          set -o pipefail
+          terraform init
+          terraform plan -no-color -lock-timeout=5m 2>&1 | tee plan.txt
+
+      - name: Plan in the job summary
+        if: always()
+        working-directory: infra/aws/status
+        run: |
+          {
+            echo '### terraform plan: status stack'
+            echo '```'
+            if [ -f plan.txt ]; then tail -c 60000 plan.txt; else echo 'no plan output'; fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  apply:
+    name: apply (status)
+    needs: checks
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+
+      # The deploy role trusts only workflows running on main (OIDC subject repo:<owner>/<repo>:ref:refs/heads/main)
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          role-session-name: gha-deploy-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: terraform apply
+        working-directory: infra/aws/status
+        run: |
+          set -o pipefail
+          terraform init
+          terraform apply -auto-approve -no-color -lock-timeout=5m 2>&1 | tee apply.txt
+
+      - name: Apply in the job summary
+        if: always()
+        working-directory: infra/aws/status
+        run: |
+          {
+            echo '### terraform apply: status stack'
+            echo '```'
+            if [ -f apply.txt ]; then tail -c 60000 apply.txt; else echo 'no apply output'; fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

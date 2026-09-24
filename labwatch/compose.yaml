@@ -1,0 +1,125 @@
+name: labwatch
+
+services:
+  postgres:
+    image: postgres:17.11-bookworm       # same PostgreSQL build and glibc (Debian 12) as the data volume was created with
+    environment:
+      POSTGRES_USER: labwatch
+      POSTGRES_DB: labwatch
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:5432:5432"            # только localhost, наружу не торчит
+    volumes:
+      - pgdata:/var/lib/postgresql/data  # данные переживают пересоздание контейнера
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U labwatch -d labwatch"]
+      interval: 5s
+      retries: 10
+    mem_limit: 1g                        # защита от OOM всей WSL
+    restart: unless-stopped
+
+  redis:
+    image: redis:8
+    command:
+      - redis-server
+      - --requirepass
+      - ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
+      - --appendonly
+      - "yes"                            # журнал на диск: переживает рестарт
+      - --maxmemory
+      - 256mb
+      - --maxmemory-policy
+      - volatile-lru                     # при нехватке памяти вытеснять только ключи с TTL
+    environment:
+      REDISCLI_AUTH: ${REDIS_PASSWORD}   # чтобы healthcheck и redis-cli знали пароль
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
+    mem_limit: 512m
+    restart: unless-stopped
+
+  # ── Application (build context: this folder, the pnpm workspace) ──────────────
+  collector:
+    build:
+      context: .
+      dockerfile: services/collector/Dockerfile
+    image: labwatch-collector:local
+    # Optional settings from .env: GITHUB_TOKEN (recommended), GITHUB_*_BUDGET_PER_HOUR, STATUS_* …
+    # The stack also starts without the file's optional values (and without a token)
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      REDIS_HOST: redis
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
+      GITHUB_REPOS: ${GITHUB_REPOS:-Ihor-Zakharov/syssoft-labs}
+      NODE_OPTIONS: --max-old-space-size=192
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    mem_limit: 320m
+    restart: unless-stopped
+
+  gateway:
+    build:
+      context: .
+      dockerfile: services/gateway/Dockerfile
+    image: labwatch-gateway:local
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      REDIS_HOST: redis
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
+      GITHUB_REPOS: ${GITHUB_REPOS:-Ihor-Zakharov/syssoft-labs}
+      NODE_OPTIONS: --max-old-space-size=192
+    depends_on:
+      collector:
+        condition: service_healthy        # the collector applies DB migrations first
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    mem_limit: 320m
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    image: labwatch-web:local
+    ports:
+      - "127.0.0.1:8080:8080"            # dashboard: http://localhost:8080
+    depends_on:
+      gateway:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    mem_limit: 64m
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:

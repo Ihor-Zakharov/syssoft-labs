@@ -1,0 +1,15 @@
+# Terraform working files and local state (real state lives in HCP Terraform)
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+
+# Lambda packages built by the archive provider
+.build/
+
+# Personal values (email etc.); an example is committed instead
+*.tfvars
+!*.tfvars.example
+
+# .terraform.lock.hcl IS committed: it pins provider versions and checksums

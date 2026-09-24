@@ -3,7 +3,9 @@ name: CI
 on:
   push:
     branches: [main]
+    paths-ignore: ['labwatch/**', 'infra/**', '**/*.md', '.github/workflows/labwatch.yml', '.github/workflows/infra.yml', '.github/workflows/send-lab1-email.yml']
   pull_request:
+    paths-ignore: ['labwatch/**', 'infra/**', '**/*.md', '.github/workflows/labwatch.yml', '.github/workflows/infra.yml', '.github/workflows/send-lab1-email.yml']
 
 permissions:
   contents: read
@@ -20,6 +22,7 @@ jobs:
   build-test:
     # Windows: later labs use WinForms, the registry and LocalDB
     runs-on: windows-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
 

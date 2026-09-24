@@ -1,0 +1,5 @@
+Windows Registry Editor Version 5.00
+
+; Removes the whole HKLM\SOFTWARE\Zakharov key (P5 and P6). Needs administrator rights.
+
+[-HKEY_LOCAL_MACHINE\SOFTWARE\Zakharov]
