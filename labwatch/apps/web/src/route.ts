@@ -15,10 +15,11 @@ export const SECTIONS = [
 
 export type Section = 'ci' | 'commits' | 'prs';
 export type Scope = { kind: 'overview' } | { kind: 'branch'; name: string };
-export type RepoRoute = { section: Section; scope: Scope };
+/** `page` is 1-based; page 1 is not written into the hash. */
+export type RepoRoute = { section: Section; scope: Scope; page: number };
 export type Route = { top: 'system' } | ({ top: 'repo' } & RepoRoute) | { top: 'status'; scale: StatusScale };
 
-export const DEFAULT_REPO_ROUTE: RepoRoute = { section: 'ci', scope: { kind: 'overview' } };
+export const DEFAULT_REPO_ROUTE: RepoRoute = { section: 'ci', scope: { kind: 'overview' }, page: 1 };
 export const DEFAULT_ROUTE: Route = { top: 'system' };
 
 const SECTION_IDS = new Set<string>(['ci', 'commits', 'prs']);
@@ -32,23 +33,33 @@ function parseScale(value: string | undefined): StatusScale {
   return value && isStatusScale(value) ? value : DEFAULT_STATUS_SCALE;
 }
 
-/** `ci/overview`, `commits/branch/lab1-task3` (the part after `#repo/`). */
-function parseRepo(path: string): RepoRoute {
+/** `?page=3` → 3; anything else (missing, 0, "x", "2.5") → 1. */
+function parsePage(query: string): number {
+  const value = new URLSearchParams(query).get('page');
+  if (!value || !/^\d{1,6}$/.test(value)) return 1;
+  return Math.max(1, Number(value));
+}
+
+/** `ci/overview`, `commits/branch/lab1-task3?page=2` (the part after `#repo/`). */
+function parseRepo(pathWithQuery: string): RepoRoute {
+  const [path = '', query = ''] = pathWithQuery.split('?');
+  const page = parsePage(query);
   const [section = '', ...rest] = path.split('/');
   if (!SECTION_IDS.has(section)) return DEFAULT_REPO_ROUTE;
   if (rest[0] === 'branch' && rest.length > 1) {
     try {
       const name = rest.slice(1).map(decodeURIComponent).join('/');
-      if (name) return { section: section as Section, scope: { kind: 'branch', name } };
+      if (name) return { section: section as Section, scope: { kind: 'branch', name }, page };
     } catch {
       // malformed escape: fall through to the overview
     }
   }
-  return { section: section as Section, scope: { kind: 'overview' } };
+  return { section: section as Section, scope: { kind: 'overview' }, page };
 }
 
 function formatRepo(route: RepoRoute): string {
-  return route.scope.kind === 'overview' ? `${route.section}/overview` : `${route.section}/branch/${encodeBranch(route.scope.name)}`;
+  const base = route.scope.kind === 'overview' ? `${route.section}/overview` : `${route.section}/branch/${encodeBranch(route.scope.name)}`;
+  return route.page > 1 ? `${base}?page=${route.page}` : base;
 }
 
 export function formatHash(route: Route): string {
@@ -58,7 +69,7 @@ export function formatHash(route: Route): string {
 }
 
 /**
- * `#system`, `#repo/ci/overview`, `#repo/commits/branch/lab1-task3`, `#status/24h`.
+ * `#system`, `#repo/ci/overview`, `#repo/commits/branch/lab1-task3?page=2`, `#status/24h`.
  * Older hashes still work and `redirect` gives the canonical one to replace them with:
  * `#ci/overview` (before the System/Repository split) → `#repo/ci/overview`,
  * `#repo/status/24h` (when Status lived under Repository) → `#status/24h`.
@@ -82,7 +93,8 @@ export function parseHash(hash: string): Route {
 
 /**
  * The route lives in the URL hash: reload keeps it, back/forward walk through it. Switching the
- * top tab keeps the repository position and the status scale; switching the section keeps the branch.
+ * top tab keeps the repository position (incl. the page) and the status scale; switching the section keeps
+ * the branch and starts at page 1.
  */
 export function useRoute(): {
   route: Route;
@@ -107,7 +119,7 @@ export function useRoute(): {
   }, []);
 
   useEffect(() => {
-    if (route.top === 'repo') lastRepo.current = { section: route.section, scope: route.scope };
+    if (route.top === 'repo') lastRepo.current = { section: route.section, scope: route.scope, page: route.page };
     if (route.top === 'status') lastScale.current = route.scale;
   }, [route]);
 
@@ -124,7 +136,7 @@ export function useRoute(): {
   );
 
   const openSection = useCallback(
-    (section: Section) => navigate({ top: 'repo', section, scope: lastRepo.current.scope }),
+    (section: Section) => navigate({ top: 'repo', section, scope: lastRepo.current.scope, page: 1 }),
     [navigate],
   );
 

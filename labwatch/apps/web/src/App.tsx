@@ -1,11 +1,12 @@
-import { arrangeBranchTabs, type BranchSummary, type Overview } from '@labwatch/shared';
-import { useQuery } from '@tanstack/react-query';
-import { useMemo } from 'react';
+import { arrangeBranchTabs, PAGE_SIZE, type BranchSummary, type Overview } from '@labwatch/shared';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
 import { CI_STATE_LABEL, Dot, ciTone, levelTone, statusTone } from './components/Badge';
 import { EventFeed } from './components/EventFeed';
 import { HealthTiles } from './components/HealthTiles';
 import { Integrations } from './components/Integrations';
 import { SourceCard } from './components/SourceCard';
+import { usePageAnchor, useRememberAnchor } from './components/Pager';
 import { OverflowMenu, TabList, type TabItem } from './components/Tabs';
 import { formatDate, useNow } from './format';
 import { useLiveUpdates } from './live';
@@ -47,7 +48,11 @@ function branchTab(b: BranchSummary): TabItem {
 function SystemView({ overview, now }: { overview: Overview | undefined; now: number }) {
   const trpc = useTRPC();
   const probes = useQuery(trpc.sourceProbes.queryOptions({ limit: 60 }));
-  const events = useQuery(trpc.events.queryOptions({ limit: 30 }));
+  // The event feed pages locally (it is not part of the URL): 15 per page, anchored like the other lists
+  const [eventsPage, setEventsPage] = useState(1);
+  const { anchor, remember } = usePageAnchor(eventsPage, 'events');
+  const events = useQuery({ ...trpc.events.queryOptions({ page: eventsPage, pageSize: PAGE_SIZE, anchor }), placeholderData: keepPreviousData });
+  useRememberAnchor(events.isPlaceholderData ? undefined : events.data, eventsPage, remember, setEventsPage);
   const integrations = useQuery({ ...trpc.integrations.queryOptions(), refetchInterval: 60_000 });
   return (
     <div className="system">
@@ -55,7 +60,7 @@ function SystemView({ overview, now }: { overview: Overview | undefined; now: nu
         {overview ? <HealthTiles services={overview.services} now={now} /> : <div className="tiles" />}
         <div className="grid">
           <SourceCard source={overview?.source ?? null} probes={probes.data ?? []} now={now} />
-          <EventFeed events={events.data} now={now} />
+          <EventFeed events={events.data} onPage={setEventsPage} now={now} />
         </div>
       </section>
       <Integrations statuses={integrations.data} now={now} />
@@ -107,11 +112,13 @@ function RepositoryView({
     secondary.push(known ? branchTab(known) : { id: `branch:${extra}`, label: <TabLabel text={extra} />, title: `${extra} (not a current branch)` });
   }
 
+  const openPage = (page: number) => navigate({ top: 'repo', section, scope, page });
+
   const selectSecondary = (id: string) => {
     navigate(
       id === 'overview'
-        ? { top: 'repo', section, scope: { kind: 'overview' } }
-        : { top: 'repo', section, scope: { kind: 'branch', name: id.slice('branch:'.length) } },
+        ? { top: 'repo', section, scope: { kind: 'overview' }, page: 1 }
+        : { top: 'repo', section, scope: { kind: 'branch', name: id.slice('branch:'.length) }, page: 1 },
     );
   };
 
@@ -131,9 +138,9 @@ function RepositoryView({
       />
       <div id={REPO_PANEL_ID} role="tabpanel" aria-labelledby={`tab-primary-${section}`} className="panel">
         {!branchKnown && <p className="notice">Branch “{selectedBranch}” is not among the current branches; showing what was recorded for it.</p>}
-        {section === 'ci' && <CiSection key={selectedBranch ?? ''} branch={selectedBranch} now={now} />}
-        {section === 'commits' && <CommitsSection key={selectedBranch ?? ''} branch={selectedBranch} now={now} />}
-        {section === 'prs' && <PullsSection key={selectedBranch ?? ''} branch={selectedBranch} now={now} />}
+        {section === 'ci' && <CiSection key={selectedBranch ?? ''} branch={selectedBranch} page={route.page} onPage={openPage} now={now} />}
+        {section === 'commits' && <CommitsSection key={selectedBranch ?? ''} branch={selectedBranch} page={route.page} onPage={openPage} now={now} />}
+        {section === 'prs' && <PullsSection key={selectedBranch ?? ''} branch={selectedBranch} page={route.page} onPage={openPage} now={now} />}
       </div>
     </>
   );

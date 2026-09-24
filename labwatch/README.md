@@ -97,9 +97,9 @@ gutter is reserved, tab captions reserve their bold width, tables use fixed colu
 
 ### Repository
 
-**Primary row:** `CI runs` · `Commits` · `Pull requests` · `Status`.
+**Primary row:** `CI runs` · `Commits` · `Pull requests` (Status is a top-level tab of its own).
 
-**Secondary row** (not on Status): `Overview` (the section across all branches, with a Branch column) · `main`
+**Secondary row:** `Overview` (the section across all branches, with a Branch column) · `main`
 · one tab per branch, ordered by latest activity (head commit, CI run or PR update). Merged branches and
 branches idle for more than 14 days go into the trailing `…` menu. Each branch tab has a CI dot — green
 success, red failure, yellow running, grey none — from the runs of the branch head, and a counter of review
@@ -114,7 +114,16 @@ source. The selected branch is kept when switching sections.
 - **Pull requests:** state, draft, review decision, findings, base ← head, checks, touched areas. Expand for
   the reviews, each inline comment as `path:line` with its Markdown and a link to GitHub, and the
   conversation. A review run that finished without posting anything shows "review ran, no comments".
-- **Status:** see below.
+
+**Paging — 15 rows per page** for CI runs, commits, pull requests, the event feed and past incidents:
+`‹ Prev  1 2 3 … N  Next ›` with "Showing 16–30 of 87" under the list (hidden when everything fits on one page).
+Paging is done on the server (`{ page, pageSize, anchor }` → `{ rows, total, page, pageSize, anchor, newer }`) in a
+stable order (newest first, ties broken by the key). Pages 2…N are **anchored** to the newest row as it was when
+you left page 1, so rows arriving meanwhile do not shift the page you are reading; instead "3 new runs — back to
+latest" appears. Page 1 follows live updates as before. The page of the repository lists is in the hash
+(`#repo/ci/overview?page=2`, page 1 is not written) and resets when you switch branch, section or area filter; an
+out-of-range page is moved to the last one. The commit area filter runs on the server, so the pages count only
+matching commits.
 
 ## GitHub API budget
 

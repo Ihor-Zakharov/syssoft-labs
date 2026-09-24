@@ -1,24 +1,34 @@
-import { compareAreas, labArea, type CommitRow } from '@labwatch/shared';
-import { useQuery } from '@tanstack/react-query';
+import { compareAreas, labArea, PAGE_SIZE, type CommitRow } from '@labwatch/shared';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { AreaBadges, Badge } from '../components/Badge';
+import { NewerNotice, Pager, usePageAnchor, useRememberAnchor } from '../components/Pager';
 import { firstLine, formatDate, shortSha, timeAgo } from '../format';
 import { useTRPC } from '../trpc';
 
-function areaFilters(labs: number[], commits: CommitRow[]): string[] {
-  const areas = new Set<string>(labs.map(labArea));
+/** Every lab of the repository plus the fixed areas, and whatever else the page shows. */
+function areaFilters(labs: number[], commits: CommitRow[], selected: string | null): string[] {
+  const areas = new Set<string>([...labs.map(labArea), 'Infra', 'CI', 'Repo']);
   for (const c of commits) c.areas?.forEach((a) => areas.add(a));
+  if (selected) areas.add(selected);
   return [...areas].sort(compareAreas);
 }
 
-export function CommitsSection({ branch, now }: { branch: string | null; now: number }) {
+export function CommitsSection({ branch, page, onPage, now }: { branch: string | null; page: number; onPage: (page: number) => void; now: number }) {
   const trpc = useTRPC();
-  const view = useQuery(trpc.commits.queryOptions({ branch, limit: branch ? 30 : 50 }));
   const [area, setArea] = useState<string | null>(null);
+  const { anchor, remember } = usePageAnchor(page, `${branch ?? ''}|${area ?? ''}`);
+  // The area filter runs on the server, so the pages count only matching commits
+  const view = useQuery({ ...trpc.commits.queryOptions({ branch, area, page, pageSize: PAGE_SIZE, anchor }), placeholderData: keepPreviousData });
+  useRememberAnchor(view.isPlaceholderData ? undefined : view.data?.commits, page, remember, onPage);
   const data = view.data;
-  const commits = data?.commits ?? [];
-  const filters = data ? areaFilters(data.labs, commits) : [];
-  const shown = area ? commits.filter((c) => c.areas?.includes(area)) : commits;
+  const commits = data?.commits.rows ?? [];
+  const filters = data ? areaFilters(data.labs, commits, area) : [];
+  const shown = commits;
+  const selectArea = (next: string | null) => {
+    setArea(next);
+    if (page !== 1) onPage(1);
+  };
   const compare = data?.compare ?? null;
   const isDefault = branch !== null && branch === data?.defaultBranch;
 
@@ -50,21 +60,23 @@ export function CommitsSection({ branch, now }: { branch: string | null; now: nu
 
       {filters.length > 0 && (
         <div className="chips" role="group" aria-label="Filter by area">
-          <button type="button" className={`chip${area === null ? ' chip-on' : ''}`} aria-pressed={area === null} onClick={() => setArea(null)}>
+          <button type="button" className={`chip${area === null ? ' chip-on' : ''}`} aria-pressed={area === null} onClick={() => selectArea(null)}>
             All
           </button>
           {filters.map((a) => (
-            <button key={a} type="button" className={`chip${area === a ? ' chip-on' : ''}`} aria-pressed={area === a} onClick={() => setArea(area === a ? null : a)}>
+            <button key={a} type="button" className={`chip${area === a ? ' chip-on' : ''}`} aria-pressed={area === a} onClick={() => selectArea(area === a ? null : a)}>
               {a}
             </button>
           ))}
         </div>
       )}
 
+      <NewerNotice paged={data?.commits} onLatest={() => onPage(1)} noun="commit" />
+
       {view.isPending ? (
         <p className="muted">Loading…</p>
       ) : shown.length === 0 ? (
-        <p className="muted">{commits.length === 0 ? 'No commits collected yet.' : 'No commits touch this area.'}</p>
+        <p className="muted">{area ? `No commits touch ${area}.` : 'No commits collected yet.'}</p>
       ) : (
         <ul className="list">
           {shown.map((c) => (
@@ -105,6 +117,7 @@ export function CommitsSection({ branch, now }: { branch: string | null; now: nu
           ))}
         </ul>
       )}
+      <Pager paged={data?.commits} onPage={onPage} label="Commits" />
     </section>
   );
 }

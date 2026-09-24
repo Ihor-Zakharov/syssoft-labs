@@ -1,3 +1,4 @@
+import type { Paged } from './paging.js';
 import type { CiState } from './ci.js';
 import type { Overall } from './overall.js';
 import type { ReviewRunOutcome, ReviewState } from './reviews.js';
@@ -138,7 +139,8 @@ export interface CommitsView {
   defaultBranch: string;
   compare: CompareInfo | null;
   labs: number[];
-  commits: CommitRow[];
+  /** One page of commits (newest first), filtered by area when one was given. */
+  commits: Paged<CommitRow>;
 }
 
 // Pull requests

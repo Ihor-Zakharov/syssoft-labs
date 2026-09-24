@@ -190,7 +190,7 @@ export async function latestChecks(db: Queryable, targets: readonly string[], va
   );
 }
 
-interface IncidentRow {
+export interface IncidentRow {
   id: number;
   target: string;
   vantage: string;
@@ -210,15 +210,20 @@ export async function recentIncidents(
     [args.vantages, args.limit],
   );
   const now = args.now ?? new Date();
-  return rows.map((r) => ({
+  return rows.map((r) => incidentFromRow(r, args.names, now));
+}
+
+/** Incident row (status_incidents) → API shape; open incidents last until `now`. */
+export function incidentFromRow(r: IncidentRow, names: ReadonlyMap<string, string>, now: Date): StatusIncident {
+  return {
     id: r.id,
     target: r.target,
-    targetName: args.names.get(r.target) ?? r.target,
+    targetName: names.get(r.target) ?? r.target,
     vantage: r.vantage,
     startedAt: r.started_at.toISOString(),
     resolvedAt: r.resolved_at?.toISOString() ?? null,
     durationS: Math.max(0, Math.round(((r.resolved_at ?? now).getTime() - r.started_at.getTime()) / 1000)),
     failedChecks: r.failed_checks,
     lastError: r.last_error,
-  }));
+  };
 }

@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { latestChecks, recentIncidents, totalUptime, uptimeBuckets, type DbHandle } from '@labwatch/infra';
+import { incidentFromRow, latestChecks, pageQuery, totalUptime, uptimeBuckets, type DbHandle, type IncidentRow } from '@labwatch/infra';
 import {
   RedisKeys,
   STATUS_TARGETS,
@@ -8,6 +8,8 @@ import {
   currentOutcome,
   levelFromStates,
   vantageLabel,
+  type PageArgs,
+  type Paged,
   type StatusCheck,
   type StatusIncident,
   type StatusLevel,
@@ -136,11 +138,22 @@ export class StatusService {
     };
   }
 
-  incidents(limit: number): Promise<StatusIncident[]> {
-    return recentIncidents(this.db.pool, {
-      vantages: this.config.statusVantages,
-      limit,
-      names: new Map(STATUS_TARGETS.map((t) => [t.id, t.name])),
+  /** Past incidents, newest first, 15 per page. */
+  async incidents(args: PageArgs): Promise<Paged<StatusIncident>> {
+    const page = await pageQuery<IncidentRow>(this.db.pool, {
+      from: 'status_incidents',
+      select: 'id, target, vantage, started_at, resolved_at, failed_checks, last_error',
+      where: 'vantage = any($1::text[])',
+      params: [this.config.statusVantages],
+      timeCol: 'started_at',
+      keyCol: 'id',
+      keyType: 'integer',
+      page: args.page,
+      pageSize: args.pageSize,
+      anchor: args.anchor,
     });
+    const names = new Map(STATUS_TARGETS.map((t) => [t.id, t.name]));
+    const now = new Date();
+    return { ...page, rows: page.rows.map((r) => incidentFromRow(r, names, now)) };
   }
 }

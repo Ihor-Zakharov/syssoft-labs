@@ -9,7 +9,7 @@ Everything below is **local** (nothing pushed); GitHub still has only PR #5 (`la
 |---|---|---|
 | `labwatch` | `d636fa5` | phase 1 — pushed as PR #5 |
 | `labwatch-tabs` | `7d8fa33` + this doc | **last green state**: typecheck/test/build pass. Two-level tabs, System/Repository, integrations, review + CI details, Status page (home vantage), GitHub budget limiter, 401 fallback |
-| `labwatch-wip` | `8a71122` | **unfinished** work parked from the stopped agent: semantic search, pagination, Status as a top-level tab. Tests pass (148 passed, 12 skipped), **`services/gateway` does not typecheck** (see §5.2) |
+| `labwatch-wip` | `8a71122` | parked work of the stopped agent — only the **semantic search** part is still relevant (pagination and the Status tab were redone on `labwatch-tabs`) |
 
 The AWS part lives in a separate worktree: `~/projects/syssoft-labs-infra` (branch `infra-aws`, commits `1807cf5`
 bootstrap, `cc4a447` status stack) — see `infra/aws/README.md` there. Both AWS stacks are **applied and running**.
@@ -81,19 +81,16 @@ Start with `git switch labwatch-wip` (or cherry-pick parts onto `labwatch-tabs`)
 
 ### 5.1 Status as a third top-level tab — **done** on `labwatch-tabs` (`2abafe9`)
 
-### 5.2 Pagination (20 rows) — half-wired, **gateway does not compile**
+### 5.2 Pagination — **done** on `labwatch-tabs` (15 rows per page)
 
-Present: `packages/shared/src/paging.ts`, `packages/infra/src/paging.ts` (+ tests), `?page=N` in the hash
-(`formatHash(route, page)`).
-Broken (`pnpm -r typecheck`):
-- `services/gateway/src/dashboard.service.ts:115,127,131` — callers still pass `{ branch, limit }` and expect arrays,
-  while queries now take `PageArgs` and return `Paged<T>`;
-- `services/gateway/src/repo.service.ts:2` — imports `pageRows` from `@labwatch/infra`, which is not exported;
-  `:279` `CommitsView` has no `rows`; several implicit `any` after that.
-To do: settle one API (`PageArgs { page, pageSize=20, branch? }` → `Paged<T> { rows, total, page, pageSize }`), export
-`pageRows` from `packages/infra/src/index.ts`, update the tRPC router inputs, add a `Pager` component
-(`‹ Prev 1 2 … N Next ›`, "Showing 21–40 of 87"), live updates refresh page 1 only ("N new — back to latest" on
-other pages), stable order `started_at desc, id desc`. Apply to CI runs, commits, PRs, events, incidents.
+Implemented fresh (only the page math was taken from `labwatch-wip`, no search code):
+`packages/shared/src/paging.ts` (`PAGE_SIZE = 15`, `PageArgs`, `Paged<T>`, `pageMath`, `pagerItems`, `pageList` for
+in-memory lists), `packages/infra/src/paging.ts` (`pageQuery`: keyset-anchored SQL paging with a typed key, so bigint
+run ids compare as numbers; `commitAreaCondition` for the server-side area filter), gateway procedures `ciRuns`,
+`commits` (+ `area`), `pulls`, `events` (now from Postgres), `incidents` take `{ page, pageSize, anchor }`, web
+`components/Pager.tsx` (`Pager`, `NewerNotice`, `usePageAnchor`, `useRememberAnchor`) and `?page=N` in the hash.
+`packages/infra/vitest.config.ts` runs the SQL test files one after another (two files migrating an empty database
+at the same time raced on `CREATE SCHEMA`).
 
 ### 5.3 Semantic search — **postponed by decision**, code parked
 

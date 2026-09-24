@@ -19,6 +19,7 @@ import {
 } from './status.js';
 import { arrangeBranchTabs, type BranchTabInfo } from './tabs.js';
 import { integrationLevel, vendorHasTrouble, type VendorStatus } from './integrations.js';
+import { PAGE_SIZE, pageList, pageMath, pagerItems } from './paging.js';
 
 describe('areas (path → lab attribution)', () => {
   it('maps paths to areas', () => {
@@ -301,5 +302,51 @@ describe('integrations', () => {
     expect(vendorHasTrouble(vendor('critical', [], 'bad json'))).toBe(false);
     expect(vendorHasTrouble(vendor('major'))).toBe(true);
     expect(vendorHasTrouble(vendor('none', [{ name: 'API Requests', status: 'degraded_performance' }]))).toBe(true);
+  });
+});
+
+describe('paging', () => {
+  it('uses 15 rows per page', () => {
+    expect(PAGE_SIZE).toBe(15);
+  });
+
+  it('computes the visible range and clamps the page', () => {
+    expect(pageMath(87, 2)).toEqual({ pages: 6, page: 2, from: 16, to: 30, offset: 15 });
+    expect(pageMath(87, 6)).toEqual({ pages: 6, page: 6, from: 76, to: 87, offset: 75 });
+    expect(pageMath(87, 9)).toMatchObject({ page: 6, from: 76 }); // past the end → last page
+    expect(pageMath(87, 0)).toMatchObject({ page: 1, from: 1, to: 15 });
+    expect(pageMath(87, Number.NaN)).toMatchObject({ page: 1 });
+    expect(pageMath(0, 3)).toEqual({ pages: 1, page: 1, from: 0, to: 0, offset: 0 });
+    expect(pageMath(15, 1)).toMatchObject({ pages: 1, to: 15 });
+    expect(pageMath(16, 2)).toMatchObject({ pages: 2, from: 16, to: 16 });
+  });
+
+  it('shows at most 7 page buttons with gaps', () => {
+    expect(pagerItems(1, 1)).toEqual([1]);
+    expect(pagerItems(3, 7)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect(pagerItems(2, 9)).toEqual([1, 2, 3, 4, 'gap', 9]);
+    expect(pagerItems(5, 9)).toEqual([1, 'gap', 4, 5, 6, 'gap', 9]);
+    expect(pagerItems(8, 9)).toEqual([1, 'gap', 6, 7, 8, 9]);
+    for (let page = 1; page <= 30; page++) expect(pagerItems(page, 30).length).toBeLessThanOrEqual(7);
+  });
+
+  it('pages an in-memory list from its anchor so new rows do not shift the pages', () => {
+    const list = Array.from({ length: 40 }, (_, i) => ({ sha: `c${40 - i}`, at: new Date(Date.UTC(2026, 8, 24, 0, 40 - i)).toISOString() }));
+    const key = (c: { sha: string }) => c.sha;
+    const at = (c: { at: string }) => c.at;
+    const first = pageList(list, { page: 1, pageSize: 15, anchor: null }, key, at);
+    expect(first).toMatchObject({ total: 40, page: 1, newer: 0, anchor: { key: 'c40' } });
+    const second = pageList(list, { page: 2, pageSize: 15, anchor: first.anchor }, key, at);
+    expect(second.rows.map(key)).toEqual(list.slice(15, 30).map(key));
+
+    // Two new commits on top: page 2 with the old anchor stays the same, "2 new"
+    const grown = [{ sha: 'c42', at: '2026-09-24T01:00:00Z' }, { sha: 'c41', at: '2026-09-24T00:59:00Z' }, ...list];
+    const again = pageList(grown, { page: 2, pageSize: 15, anchor: first.anchor }, key, at);
+    expect(again.rows.map(key)).toEqual(second.rows.map(key));
+    expect(again).toMatchObject({ total: 40, newer: 2 });
+
+    // A vanished anchor (force-push) restarts from the newest; empty lists have no anchor
+    expect(pageList(list, { page: 1, pageSize: 15, anchor: { at: 'x', key: 'gone' } }, key, at)).toMatchObject({ newer: 0, total: 40 });
+    expect(pageList([] as typeof list, { page: 3, pageSize: 15, anchor: null }, key, at)).toEqual({ rows: [], total: 0, page: 1, pageSize: 15, anchor: null, newer: 0 });
   });
 });

@@ -1,4 +1,4 @@
-import { STATUS_SCALE_KEYS } from '@labwatch/shared';
+import { PAGE_SIZE, STATUS_SCALE_KEYS } from '@labwatch/shared';
 import { initTRPC } from '@trpc/server';
 import { z } from 'zod';
 import type { Context } from './context.js';
@@ -14,14 +14,20 @@ const t = initTRPC.context<Context>().create({
 const limit = (max: number, fallback: number) =>
   z.object({ limit: z.number().int().min(1).max(max).default(fallback) }).default({ limit: fallback });
 
-/** Optional branch filter: null = all branches ("Overview"). */
-const byBranch = (max: number, fallback: number) =>
-  z
-    .object({
-      branch: z.string().min(1).max(255).nullable().default(null),
-      limit: z.number().int().min(1).max(max).default(fallback),
-    })
-    .default({ branch: null, limit: fallback });
+/** Page 1 without an anchor; pages 2…N send back the anchor that page 1 returned. */
+const paging = {
+  page: z.number().int().min(1).max(100_000).default(1),
+  pageSize: z.number().int().min(5).max(100).default(PAGE_SIZE),
+  anchor: z
+    .object({ at: z.string().datetime({ offset: true }), key: z.string().min(1).max(100) })
+    .nullable()
+    .default(null),
+};
+
+/** A paged list with an optional branch filter: null = all branches ("Overview"). */
+const pagedByBranch = z.object({ branch: z.string().min(1).max(255).nullable().default(null), ...paging }).prefault({});
+
+const paged = z.object(paging).prefault({});
 
 export const appRouter = t.router({
   overview: t.procedure.query(({ ctx }) => ctx.api.overview()),
@@ -29,7 +35,7 @@ export const appRouter = t.router({
   /** Branch tabs: CI dot, activity, PR, ahead/behind. */
   branches: t.procedure.query(({ ctx }) => ctx.api.branches()),
 
-  ciRuns: t.procedure.input(byBranch(200, 30)).query(({ ctx, input }) => ctx.api.ciRuns(input)),
+  ciRuns: t.procedure.input(pagedByBranch).query(({ ctx, input }) => ctx.api.ciRuns(input)),
 
   /** One run: jobs with steps, test reports of its commit, review outcome. */
   ciRun: t.procedure.input(z.object({ runId: z.number().int().positive() })).query(({ ctx, input }) => ctx.api.ciRun(input.runId)),
@@ -38,16 +44,27 @@ export const appRouter = t.router({
     .input(z.object({ runId: z.number().int().positive() }))
     .query(({ ctx, input }) => ctx.api.ciJobs(input.runId)),
 
-  commits: t.procedure.input(byBranch(200, 30)).query(({ ctx, input }) => ctx.api.commits(input)),
+  /** `area`: "Lab 1", "Infra", "CI", "Repo" — only commits touching it. */
+  commits: t.procedure
+    .input(
+      z
+        .object({
+          branch: z.string().min(1).max(255).nullable().default(null),
+          area: z.string().min(1).max(32).nullable().default(null),
+          ...paging,
+        })
+        .prefault({}),
+    )
+    .query(({ ctx, input }) => ctx.api.commits(input)),
 
-  pulls: t.procedure.input(byBranch(100, 30)).query(({ ctx, input }) => ctx.api.pulls(input)),
+  pulls: t.procedure.input(pagedByBranch).query(({ ctx, input }) => ctx.api.pulls(input)),
 
   /** One PR: reviews, inline comments (path:line) and conversation comments. */
   pull: t.procedure.input(z.object({ number: z.number().int().positive() })).query(({ ctx, input }) => ctx.api.pull(input.number)),
 
   sourceProbes: t.procedure.input(limit(500, 60)).query(({ ctx, input }) => ctx.api.sourceProbes(input.limit)),
 
-  events: t.procedure.input(limit(500, 50)).query(({ ctx, input }) => ctx.api.events(input.limit)),
+  events: t.procedure.input(paged).query(({ ctx, input }) => ctx.api.events(input)),
 
   /** `vantage`: `all` (combined) or one vantage id; unknown ids fall back to `all`. */
   statusPage: t.procedure
@@ -61,7 +78,7 @@ export const appRouter = t.router({
     )
     .query(({ ctx, input }) => ctx.api.statusPage(input.scale as Parameters<Context['api']['statusPage']>[0], input.vantage)),
 
-  incidents: t.procedure.input(limit(200, 30)).query(({ ctx, input }) => ctx.api.incidents(input.limit)),
+  incidents: t.procedure.input(paged).query(({ ctx, input }) => ctx.api.incidents(input)),
 
   /** GitHub, AWS, HCP Terraform: our connection and the vendor's own status. */
   integrations: t.procedure.query(({ ctx }) => ctx.api.integrations()),

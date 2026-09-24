@@ -1,8 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { ciRuns, events, sourceProbes, type DbHandle } from '@labwatch/infra';
+import { ciRuns, pageQuery, sourceProbes, type DbHandle } from '@labwatch/infra';
 import {
   ApiBudgetSchema,
-  EVENTS_STREAM,
   HeartbeatSchema,
   INTEGRATION_IDS,
   LabEventSchema,
@@ -19,6 +18,8 @@ import {
   type CiRunRow,
   type CommitsView,
   type IntegrationStatus,
+  type PageArgs,
+  type Paged,
   type Overview,
   type PullDetail,
   type PullRow,
@@ -110,7 +111,7 @@ export class DashboardService implements DashboardApi {
     return this.repo.branches();
   }
 
-  ciRuns(args: { branch: string | null; limit: number }): Promise<CiRunRow[]> {
+  ciRuns(args: { branch: string | null } & PageArgs): Promise<Paged<CiRunRow>> {
     return this.repo.ciRuns(args);
   }
 
@@ -122,11 +123,11 @@ export class DashboardService implements DashboardApi {
     return this.repo.ciJobs(runId);
   }
 
-  commits(args: { branch: string | null; limit: number }): Promise<CommitsView> {
+  commits(args: { branch: string | null; area: string | null } & PageArgs): Promise<CommitsView> {
     return this.repo.commits(args);
   }
 
-  pulls(args: { branch: string | null; limit: number }): Promise<PullRow[]> {
+  pulls(args: { branch: string | null } & PageArgs): Promise<Paged<PullRow>> {
     return this.repo.pulls(args);
   }
 
@@ -138,8 +139,8 @@ export class DashboardService implements DashboardApi {
     return this.status.statusPage(scale, vantage);
   }
 
-  incidents(limit: number): Promise<StatusIncident[]> {
-    return this.status.incidents(limit);
+  incidents(args: PageArgs): Promise<Paged<StatusIncident>> {
+    return this.status.incidents(args);
   }
 
   /** Latest check per integration (written by the collector); not checked yet → omitted. */
@@ -160,21 +161,28 @@ export class DashboardService implements DashboardApi {
     return rows.map(({ id: _id, ...r }) => ({ ...r, checkedAt: iso(r.checkedAt), certValidTo: isoOrNull(r.certValidTo) }));
   }
 
-  /** The capped Redis stream serves the feed; Postgres is the fallback when Redis lost it. */
-  async events(limit: number): Promise<StoredEvent[]> {
-    const entries = await this.redis.xrevrange(EVENTS_STREAM, '+', '-', 'COUNT', limit).catch(() => []);
-    const fromStream = entries.flatMap(([id, fields]) => {
-      const raw = fields[fields.indexOf('event') + 1];
-      const parsed = raw === undefined ? null : LabEventSchema.safeParse(JSON.parse(raw));
-      return parsed?.success ? [{ id, ...parsed.data }] : [];
+  /**
+   * The event feed, newest first, 15 per page. Paged from Postgres (every event is written there first;
+   * the Redis stream is capped and serves live consumers).
+   */
+  async events(args: PageArgs): Promise<Paged<StoredEvent>> {
+    const page = await pageQuery<{ id: number; at: Date; kind: string; severity: string; title: string; data: unknown }>(this.db.pool, {
+      from: 'events',
+      select: 'id, at, kind, severity, title, data',
+      where: 'true',
+      params: [],
+      timeCol: 'at',
+      keyCol: 'id',
+      keyType: 'integer',
+      page: args.page,
+      pageSize: args.pageSize,
+      anchor: args.anchor,
     });
-    if (fromStream.length > 0) return fromStream;
-
-    const rows = await this.db.db.select().from(events).orderBy(desc(events.at)).limit(limit);
-    return rows.flatMap((r) => {
+    const rows = page.rows.flatMap((r) => {
       const parsed = LabEventSchema.safeParse({ ...r, at: iso(r.at) });
       return parsed.success ? [{ id: `pg-${r.id}`, ...parsed.data }] : [];
     });
+    return { ...page, rows };
   }
 
   private async json<T>(key: string, schema: ZodType<T>): Promise<T | null> {
