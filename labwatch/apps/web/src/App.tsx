@@ -63,7 +63,7 @@ function SystemView({ overview, now }: { overview: Overview | undefined; now: nu
   );
 }
 
-/** CI runs | Commits | Pull requests | Status, with the branch tabs. */
+/** CI runs | Commits | Pull requests, with the branch tabs. */
 function RepositoryView({
   route,
   overview,
@@ -74,30 +74,19 @@ function RepositoryView({
   route: RepoRoute;
   overview: Overview | undefined;
   navigate: (route: Route) => void;
-  openSection: (section: RepoRoute['section']) => void;
+  openSection: (section: Section) => void;
   now: number;
 }) {
   const trpc = useTRPC();
   const branches = useQuery(trpc.branches.queryOptions());
   const tabs = useMemo(() => arrangeBranchTabs(branches.data?.branches ?? [], new Date(now)), [branches.data, Math.floor(now / 60_000)]);
 
-  const primary: TabItem[] = SECTIONS.map((s) => ({
-    id: s.id,
-    label:
-      s.id === 'status' ? (
-        <>
-          {/* Always rendered (grey until loaded), so the tab does not grow when data arrives */}
-          <Dot tone={overview ? statusTone(overview.statusLevel) : 'muted'} /> <TabLabel text={s.label} />
-        </>
-      ) : (
-        <TabLabel text={s.label} />
-      ),
-  }));
+  const primary: TabItem[] = SECTIONS.map((s) => ({ id: s.id, label: <TabLabel text={s.label} /> }));
 
   const section = route.section;
-  const scope = route.section === 'status' ? null : route.scope;
-  const selectedBranch = scope?.kind === 'branch' ? scope.name : null;
-  const secondaryId = scope ? (scope.kind === 'overview' ? 'overview' : `branch:${scope.name}`) : null;
+  const scope = route.scope;
+  const selectedBranch = scope.kind === 'branch' ? scope.name : null;
+  const secondaryId = scope.kind === 'overview' ? 'overview' : `branch:${scope.name}`;
 
   const secondary: TabItem[] = [
     {
@@ -119,7 +108,6 @@ function RepositoryView({
   }
 
   const selectSecondary = (id: string) => {
-    if (section === 'status') return;
     navigate(
       id === 'overview'
         ? { top: 'repo', section, scope: { kind: 'overview' } }
@@ -131,29 +119,21 @@ function RepositoryView({
 
   return (
     <>
-      <TabList items={primary} selectedId={section} onSelect={(id) => openSection(id as Section | 'status')} label="Sections" variant="primary" panelId={REPO_PANEL_ID} />
-      {section !== 'status' && (
-        <TabList
-          items={secondary}
-          selectedId={secondaryId}
-          onSelect={selectSecondary}
-          label="Branches"
-          variant="secondary"
-          panelId={REPO_PANEL_ID}
-          after={<OverflowMenu label="Merged and idle branches" items={tabs.overflow.filter((b) => b.name !== extra).map(branchTab)} onSelect={selectSecondary} />}
-        />
-      )}
+      <TabList items={primary} selectedId={section} onSelect={(id) => openSection(id as Section)} label="Sections" variant="primary" panelId={REPO_PANEL_ID} />
+      <TabList
+        items={secondary}
+        selectedId={secondaryId}
+        onSelect={selectSecondary}
+        label="Branches"
+        variant="secondary"
+        panelId={REPO_PANEL_ID}
+        after={<OverflowMenu label="Merged and idle branches" items={tabs.overflow.filter((b) => b.name !== extra).map(branchTab)} onSelect={selectSecondary} />}
+      />
       <div id={REPO_PANEL_ID} role="tabpanel" aria-labelledby={`tab-primary-${section}`} className="panel">
-        {route.section === 'status' ? (
-          <StatusSection scale={route.scale} onScale={(scale) => navigate({ top: 'repo', section: 'status', scale })} now={now} />
-        ) : (
-          <>
-            {!branchKnown && <p className="notice">Branch “{selectedBranch}” is not among the current branches; showing what was recorded for it.</p>}
-            {section === 'ci' && <CiSection key={selectedBranch ?? ''} branch={selectedBranch} now={now} />}
-            {section === 'commits' && <CommitsSection key={selectedBranch ?? ''} branch={selectedBranch} now={now} />}
-            {section === 'prs' && <PullsSection key={selectedBranch ?? ''} branch={selectedBranch} now={now} />}
-          </>
-        )}
+        {!branchKnown && <p className="notice">Branch “{selectedBranch}” is not among the current branches; showing what was recorded for it.</p>}
+        {section === 'ci' && <CiSection key={selectedBranch ?? ''} branch={selectedBranch} now={now} />}
+        {section === 'commits' && <CommitsSection key={selectedBranch ?? ''} branch={selectedBranch} now={now} />}
+        {section === 'prs' && <PullsSection key={selectedBranch ?? ''} branch={selectedBranch} now={now} />}
       </div>
     </>
   );
@@ -182,17 +162,18 @@ export function App() {
     id: t.id,
     label: (
       <>
+        {/* Always rendered (grey until loaded), so a tab does not grow when data arrives */}
         <Dot
           tone={
-            t.id === 'system'
-              ? data
+            !data
+              ? 'muted'
+              : t.id === 'system'
                 ? systemDown
                   ? 'bad'
                   : worstIntegration
-                : 'muted'
-              : data
-                ? levelTone(data.overall.level)
-                : 'muted'
+                : t.id === 'status'
+                  ? statusTone(data.statusLevel)
+                  : levelTone(data.overall.level)
           }
         />{' '}
         <TabLabel text={t.label} />
@@ -226,11 +207,9 @@ export function App() {
       <TabList items={top} selectedId={route.top} onSelect={(id) => openTop(id as Route['top'])} label="Views" variant="top" panelId={PANEL_ID} />
 
       <main id={PANEL_ID} role="tabpanel" aria-labelledby={`tab-top-${route.top}`}>
-        {route.top === 'system' ? (
-          <SystemView overview={data} now={now} />
-        ) : (
-          <RepositoryView route={route} overview={data} navigate={navigate} openSection={openSection} now={now} />
-        )}
+        {route.top === 'system' && <SystemView overview={data} now={now} />}
+        {route.top === 'status' && <StatusSection scale={route.scale} onScale={(scale) => navigate({ top: 'status', scale })} now={now} />}
+        {route.top === 'repo' && <RepositoryView route={route} overview={data} navigate={navigate} openSection={openSection} now={now} />}
       </main>
     </div>
   );
