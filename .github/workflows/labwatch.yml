@@ -23,6 +23,22 @@ jobs:
     name: typecheck, test, build
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # The SQL tests of the status page (uptime buckets) run against a real Postgres
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: labwatch
+          POSTGRES_DB: labwatch
+          POSTGRES_PASSWORD: ci-only-password
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U labwatch -d labwatch"
+          --health-interval 5s
+          --health-retries 10
+    env:
+      POSTGRES_HOST: localhost
+      POSTGRES_PASSWORD: ci-only-password
     steps:
       - uses: actions/checkout@v7
 

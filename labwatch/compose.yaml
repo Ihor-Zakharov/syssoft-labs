@@ -49,12 +49,16 @@ services:
       context: .
       dockerfile: services/collector/Dockerfile
     image: labwatch-collector:local
+    # Optional settings from .env: GITHUB_TOKEN (recommended), GITHUB_*_BUDGET_PER_HOUR, STATUS_* …
+    # The stack also starts without the file's optional values (and without a token)
+    env_file:
+      - path: .env
+        required: false
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       REDIS_HOST: redis
       REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
-      GITHUB_TOKEN: ${GITHUB_TOKEN:-}      # optional: from .env or the shell
       GITHUB_REPOS: ${GITHUB_REPOS:-Ihor-Zakharov/syssoft-labs}
       NODE_OPTIONS: --max-old-space-size=192
     depends_on:
@@ -76,6 +80,9 @@ services:
       context: .
       dockerfile: services/gateway/Dockerfile
     image: labwatch-gateway:local
+    env_file:
+      - path: .env
+        required: false
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
