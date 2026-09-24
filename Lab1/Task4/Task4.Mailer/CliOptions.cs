@@ -2,19 +2,17 @@ using MimeKit;
 
 namespace Task4.Mailer;
 
-internal sealed record CliOptions(MailboxAddress To, string Subject, bool DryRun, bool Trace)
+internal sealed record CliOptions(MailboxAddress To, string Subject)
 {
     public const string Usage = """
-        Usage: Task4.Mailer [options] [--] <to> <subject>
+        Usage: Task4.Mailer <to> <subject>
 
-          <to>          recipient address, e.g. teacher@knu.ua
-          <subject>     subject line, e.g. LAB-1
-          --dry-run     print the message instead of sending it (no SMTP settings needed)
-          --trace       print the SMTP conversation to stderr (passwords are redacted)
-          -h, --help    show this help
+          <to>        recipient address, e.g. teacher@knu.ua
+          <subject>   subject line, e.g. LAB-1
 
-        SMTP settings are read from environment variables (never from the command line):
-          LAB1_SMTP_HOST      server, e.g. smtp.gmail.com, or localhost for Mailpit
+        Sends an email with the current date, time, first and last name.
+        SMTP settings are read from environment variables:
+          LAB1_SMTP_HOST      server, e.g. smtp.gmail.com (localhost for Mailpit)
           LAB1_SMTP_PORT      default 587 (465 when LAB1_SMTP_SECURITY=ssl)
           LAB1_SMTP_SECURITY  auto | starttls | ssl | none   (default auto)
           LAB1_SMTP_USER      login; together with LAB1_SMTP_PASSWORD
@@ -22,59 +20,24 @@ internal sealed record CliOptions(MailboxAddress To, string Subject, bool DryRun
           LAB1_SMTP_FROM      sender address (default: LAB1_SMTP_USER)
         """;
 
-    /// <summary>
-    /// Returns null when the program should not run: error == null means help was requested, otherwise the arguments are invalid.
-    /// </summary>
+    /// <summary>Both arguments are required. Returns null with an error message otherwise.</summary>
     public static CliOptions? TryParse(string[] args, out string? error)
     {
-        var positional = new List<string>();
-        var dryRun = false;
-        var trace = false;
-        var onlyPositionalFollow = false;
-
-        foreach (var arg in args)
+        if (args.Length != 2)
         {
-            if (onlyPositionalFollow || !arg.StartsWith('-'))
-            {
-                positional.Add(arg);
-                continue;
-            }
-
-            switch (arg)
-            {
-                case "--":
-                    onlyPositionalFollow = true;
-                    break;
-                case "-h" or "--help":
-                    error = null;
-                    return null;
-                case "--dry-run":
-                    dryRun = true;
-                    break;
-                case "--trace":
-                    trace = true;
-                    break;
-                default:
-                    error = $"Unknown option: {arg}";
-                    return null;
-            }
-        }
-
-        if (positional.Count != 2)
-        {
-            error = positional.Count < 2
+            error = args.Length < 2
                 ? "Both the recipient address and the subject are required."
                 : "Expected exactly two arguments: <to> <subject>. Put a subject with spaces in quotes.";
             return null;
         }
 
-        if (!TryParseAddress(positional[0], out var to))
+        if (!TryParseAddress(args[0], out var to))
         {
-            error = $"Not a valid email address: {positional[0]}";
+            error = $"Not a valid email address: {args[0]}";
             return null;
         }
 
-        var subject = positional[1].Trim();
+        var subject = args[1].Trim();
         if (subject.Length == 0)
         {
             error = "The subject must not be empty.";
@@ -82,7 +45,7 @@ internal sealed record CliOptions(MailboxAddress To, string Subject, bool DryRun
         }
 
         error = null;
-        return new CliOptions(to, subject, dryRun, trace);
+        return new CliOptions(to, subject);
     }
 
     /// <summary>A single plain address like user@example.com (no display name, no lists).</summary>

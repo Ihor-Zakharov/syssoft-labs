@@ -10,12 +10,11 @@
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File Lab1\Task4\send-gmail.ps1 -To teacher@knu.ua
-    powershell -ExecutionPolicy Bypass -File Lab1\Task4\send-gmail.ps1 -To teacher@knu.ua -Subject LAB-1 -Trace
+    powershell -ExecutionPolicy Bypass -File Lab1\Task4\send-gmail.ps1 -To teacher@knu.ua -Subject LAB-1
 #>
 param(
     [Parameter(Mandatory = $true)][string]$To,
-    [string]$Subject = "LAB-1",
-    [switch]$Trace
+    [string]$Subject = "LAB-1"
 )
 
 $ErrorActionPreference = "Stop"
@@ -32,10 +31,7 @@ try {
     $env:LAB1_SMTP_USER = $gmail
     $env:LAB1_SMTP_PASSWORD = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
 
-    $arguments = @($To, $Subject)
-    if ($Trace) { $arguments += "--trace" }
-
-    dotnet run --project (Join-Path $PSScriptRoot "Task4.Mailer") -c Release -- @arguments
+    dotnet run --project (Join-Path $PSScriptRoot "Task4.Mailer") -c Release -- $To $Subject
     $exitCode = $LASTEXITCODE
 }
 finally {

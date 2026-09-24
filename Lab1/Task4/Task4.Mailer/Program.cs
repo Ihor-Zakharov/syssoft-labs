@@ -25,34 +25,18 @@ internal static class Program
         var options = CliOptions.TryParse(args, out var error);
         if (options is null)
         {
-            if (error is null)
-            {
-                Console.WriteLine(CliOptions.Usage);
-                return ExitOk;
-            }
-
             Console.Error.WriteLine(error);
             Console.Error.WriteLine();
             Console.Error.WriteLine(CliOptions.Usage);
             return ExitUsage;
         }
 
-        if (options.DryRun)
-        {
-            // Without SMTP settings the sender is unknown; a placeholder shows what the message looks like
-            var from = SmtpSettings.TryLoad(Environment.GetEnvironmentVariable, out _)?.From
-                       ?? new MimeKit.MailboxAddress("", "sender@example.com");
-            var preview = LabMessage.Create(from, options.To, options.Subject, DateTimeOffset.Now);
-            using var stdout = Console.OpenStandardOutput();
-            await preview.WriteToAsync(stdout);
-            return ExitOk;
-        }
-
         var settings = SmtpSettings.TryLoad(Environment.GetEnvironmentVariable, out error);
         if (settings is null)
         {
             Console.Error.WriteLine($"SMTP is not configured: {error}");
-            Console.Error.WriteLine("Run with --help for the list of environment variables, or use --dry-run.");
+            Console.Error.WriteLine();
+            Console.Error.WriteLine(CliOptions.Usage);
             return ExitUsage;
         }
 
@@ -64,10 +48,9 @@ internal static class Program
         };
 
         var message = LabMessage.Create(settings.From, options.To, options.Subject, DateTimeOffset.Now);
-        using var trace = options.Trace ? Console.OpenStandardError() : null;
         try
         {
-            var reply = await new MailSender(settings, trace).SendAsync(message, cts.Token);
+            var reply = await new MailSender(settings).SendAsync(message, cts.Token);
             Console.WriteLine($"Sent \"{options.Subject}\" to {options.To.Address} via {settings}");
             Console.WriteLine($"Server reply: {reply}");
             return ExitOk;

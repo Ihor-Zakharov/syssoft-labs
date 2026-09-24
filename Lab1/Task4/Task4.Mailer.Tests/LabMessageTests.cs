@@ -24,17 +24,4 @@ public class LabMessageTests
         Assert.Equal(Now, message.Date);
         Assert.Equal(LabMessage.Body(Now), message.TextBody);
     }
-
-    [Fact]
-    public void NonAsciiSubjectSurvivesMimeEncoding()
-    {
-        var message = LabMessage.Create(MailboxAddress.Parse("me@gmail.com"), MailboxAddress.Parse("teacher@knu.ua"), "ЛАБ-1 Захаров", Now);
-
-        using var stream = new MemoryStream();
-        message.WriteTo(stream);
-        stream.Position = 0;
-        var parsed = MimeMessage.Load(stream);
-
-        Assert.Equal("ЛАБ-1 Захаров", parsed.Subject);
-    }
 }

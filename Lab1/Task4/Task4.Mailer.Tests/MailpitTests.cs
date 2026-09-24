@@ -1,4 +1,3 @@
-using System.Text;
 using MimeKit;
 
 namespace Task4.Mailer.Tests;
@@ -34,25 +33,5 @@ public sealed class MailpitTests(MailpitFixture mailpit) : IClassFixture<Mailpit
         {
             await mailpit.DeleteAsync(id);
         }
-    }
-
-    [SkippableFact]
-    public async Task TraceShowsTheSmtpConversation()
-    {
-        Skip.If(mailpit.UnavailableReason is not null, mailpit.UnavailableReason);
-
-        var subject = "LAB-1 trace " + Guid.NewGuid().ToString("N")[..8];
-        var message = LabMessage.Create(Mailpit.From, MailboxAddress.Parse("teacher@example.com"), subject, DateTimeOffset.Now);
-        using var trace = new MemoryStream();
-
-        await new MailSender(Mailpit, trace).SendAsync(message, CancellationToken.None);
-        await mailpit.DeleteAsync(await mailpit.WaitForMessageAsync(subject));
-
-        var conversation = Encoding.UTF8.GetString(trace.ToArray());
-        Assert.Contains("EHLO", conversation);
-        Assert.Contains("MAIL FROM:<lab@example.com>", conversation);
-        Assert.Contains("RCPT TO:<teacher@example.com>", conversation);
-        Assert.Contains("DATA", conversation);
-        Assert.Contains("QUIT", conversation);
     }
 }
