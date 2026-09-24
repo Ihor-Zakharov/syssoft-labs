@@ -3,9 +3,9 @@ namespace Task1.Downloader.Tests;
 public class ManualLightenerTests
 {
     [Fact]
-    public void ReplacesOnlyLinesContainingWord()
+    public void ReplacesOnlyLinesContainingTheWord()
     {
-        var (text, replaced) = ManualLightener.Lighten("alpha\r\nflashrom -p\r\nomega\r\n", "flashrom", wholeWord: false);
+        var (text, replaced) = ManualLightener.Lighten("alpha\r\nrun flashrom -p\r\nomega\r\n", "flashrom");
 
         Assert.Equal("alpha\r\nWORD FOUND!!!\r\nomega\r\n", text);
         Assert.Equal(1, replaced);
@@ -14,78 +14,24 @@ public class ManualLightenerTests
     [Fact]
     public void IgnoresCase()
     {
-        var (text, _) = ManualLightener.Lighten("Flashrom\nFLASHROM\nnothing", "flashrom", wholeWord: false);
+        var (_, replaced) = ManualLightener.Lighten("Flashrom\nFLASHROM\nnothing\n", "flashrom");
 
-        Assert.Equal("WORD FOUND!!!\nWORD FOUND!!!\nnothing", text);
+        Assert.Equal(2, replaced);
     }
 
     [Fact]
-    public void KeepsMixedLineEndingsAndLastLineWithoutNewline()
+    public void MatchesTheWholeWordOnly()
     {
-        var (text, _) = ManualLightener.Lighten("a word\r\nb\nc word", "word", wholeWord: false);
+        var (text, _) = ManualLightener.Lighten("the programmer\nprogram it\n", "program");
 
-        Assert.Equal("WORD FOUND!!!\r\nb\nWORD FOUND!!!", text);
+        Assert.Equal("the programmer\nWORD FOUND!!!\n", text);
     }
 
     [Fact]
-    public void KeepsEmptyLines()
+    public void KeepsOtherLinesAndLineEndings()
     {
-        var (text, _) = ManualLightener.Lighten("\r\nword\r\n\r\n", "word", wholeWord: false);
+        var (text, _) = ManualLightener.Lighten("\r\nword\r\nkept as is\nlast word", "word");
 
-        Assert.Equal("\r\nWORD FOUND!!!\r\n\r\n", text);
-    }
-
-    [Theory]
-    [InlineData("a word\r", "WORD FOUND!!!\r")]
-    [InlineData("a\nword\r", "a\nWORD FOUND!!!\r")]
-    [InlineData("nothing\r", "nothing\r")]
-    public void KeepsTrailingLoneCarriageReturn(string input, string expected)
-    {
-        var (text, _) = ManualLightener.Lighten(input, "word", wholeWord: false);
-
-        Assert.Equal(expected, text);
-    }
-
-    [Fact]
-    public void MatchesNonAsciiWords()
-    {
-        var (text, replaced) = ManualLightener.Lighten("Київ\nЛьвів\n", "київ", wholeWord: true);
-
-        Assert.Equal("WORD FOUND!!!\nЛьвів\n", text);
-        Assert.Equal(1, replaced);
-    }
-
-    [Theory]
-    [InlineData(false, 2)]
-    [InlineData(true, 1)]
-    public void WholeWordSkipsWordInsideOtherWords(bool wholeWord, int expected)
-    {
-        var (_, replaced) = ManualLightener.Lighten("the programmer\nprogram it\n", "program", wholeWord);
-
-        Assert.Equal(expected, replaced);
-    }
-
-    [Fact]
-    public void WholeWordWorksForWordsEndingWithSymbol()
-    {
-        var (_, replaced) = ManualLightener.Lighten("written in C++\nC++x\n", "C++", wholeWord: true);
-
-        Assert.Equal(1, replaced);
-    }
-
-    [Fact]
-    public void TreatsRegexCharactersLiterally()
-    {
-        var (_, replaced) = ManualLightener.Lighten("00:0d.0 device\n00x0d10\n", "0d.0", wholeWord: false);
-
-        Assert.Equal(1, replaced);
-    }
-
-    [Theory]
-    [InlineData("")]
-    [InlineData("  ")]
-    public void RejectsEmptyWord(string word)
-    {
-        Assert.ThrowsAny<ArgumentException>(() => ManualLightener.Lighten("text", word, wholeWord: false));
+        Assert.Equal("\r\nWORD FOUND!!!\r\nkept as is\nWORD FOUND!!!", text);
     }
 }

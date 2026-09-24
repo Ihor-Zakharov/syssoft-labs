@@ -12,24 +12,17 @@ internal static class Program
     {
         try
         {
-            // The default Windows console code page cannot print many non-ASCII characters (paths, search words)
+            // The default Windows console code page cannot print many non-ASCII characters (paths, words)
             Console.OutputEncoding = Encoding.UTF8;
         }
         catch (IOException)
         {
-            // No console attached (e.g. started by a service): keep the default encoding
+            // No console attached: keep the default encoding
         }
 
         var options = CliOptions.TryParse(args, out var error);
         if (options is null)
         {
-            if (error is null)
-            {
-                Console.WriteLine(CliOptions.Usage);
-                return ExitOk;
-            }
-
-            // Error and usage go to one stream (stderr), otherwise they interleave in the console
             Console.Error.WriteLine(error);
             Console.Error.WriteLine();
             Console.Error.WriteLine(CliOptions.Usage);
@@ -44,29 +37,30 @@ internal static class Program
         };
 
         using var http = ManualDownloader.CreateClient(CertificatePinning.ManualServerSha256);
+        var url = ManualDownloader.ManualUrl;
         try
         {
-            var result = await new ManualDownloader(http).RunAsync(options, cts.Token);
+            // Files go to the current folder: run the program from a folder (e.g. in Far) and both files appear there
+            var result = await new ManualDownloader(http).RunAsync(url, options.Word, Environment.CurrentDirectory, cts.Token);
             Console.WriteLine($"Downloaded: {result.ManualPath}");
-            Console.WriteLine($"Light:      {result.LightPath} (lines replaced: {result.ReplacedLines}, encoding: {result.Encoding})");
+            Console.WriteLine($"Light:      {result.LightPath} (lines replaced: {result.ReplacedLines})");
             return ExitOk;
         }
         catch (HttpRequestException ex)
         {
-            Console.Error.WriteLine($"Failed to download {options.Url}: {ex.Message}");
+            Console.Error.WriteLine($"Failed to download {url}: {ex.Message}");
         }
         catch (TaskCanceledException) when (!cts.IsCancellationRequested)
         {
-            Console.Error.WriteLine($"Server {options.Url.Host} did not respond in time.");
+            Console.Error.WriteLine($"Server {url.Host} did not respond in time.");
         }
         catch (OperationCanceledException)
         {
             Console.Error.WriteLine("Cancelled.");
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            // Bad output path (invalid characters, no access, disk full, ...)
-            Console.Error.WriteLine($"Failed to write output to {options.OutputDir}: {ex.Message}");
+            Console.Error.WriteLine($"Failed to write the files in {Environment.CurrentDirectory}: {ex.Message}");
         }
 
         return ExitFailure;

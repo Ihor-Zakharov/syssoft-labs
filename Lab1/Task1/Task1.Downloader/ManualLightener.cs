@@ -8,17 +8,16 @@ internal static class ManualLightener
     public const string Marker = "WORD FOUND!!!";
 
     /// <summary>
-    /// Replaces every line containing the word with <see cref="Marker"/>. Matching is case-insensitive;
-    /// line endings (CRLF, LF or a trailing lone CR) are kept as in the original.
+    /// Replaces every line that contains the word with <see cref="Marker"/>. The word is matched as a whole word
+    /// ("program" does not match "programmer") and case-insensitively; line endings are kept as in the original.
     /// </summary>
-    public static (string Text, int Replaced) Lighten(string text, string word, bool wholeWord)
+    public static (string Text, int Replaced) Lighten(string text, string word)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(word);
 
-        // (?<!\w) and (?!\w) instead of \b: also works for words that start or end with a non-letter (C++, .NET)
-        var escaped = Regex.Escape(word);
-        var pattern = wholeWord ? $@"(?<!\w){escaped}(?!\w)" : escaped;
-        var regex = new Regex(pattern, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        // Regex.Escape: characters like "." in the word are literal. (?<!\w) and (?!\w) instead of \b:
+        // a whole word also when it starts or ends with a non-letter (C++, .NET)
+        var regex = new Regex($@"(?<!\w){Regex.Escape(word)}(?!\w)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
         var result = new StringBuilder(text.Length);
         var replaced = 0;
@@ -27,9 +26,7 @@ internal static class ManualLightener
         {
             var newline = text.IndexOf('\n', start);
             var end = newline < 0 ? text.Length : newline + 1;
-            var eolLength = newline >= 0
-                ? (newline > start && text[newline - 1] == '\r' ? 2 : 1)
-                : (text[end - 1] == '\r' ? 1 : 0);
+            var eolLength = newline < 0 ? 0 : (newline > start && text[newline - 1] == '\r' ? 2 : 1);
 
             var line = text.AsSpan(start, end - start - eolLength);
             if (regex.IsMatch(line))
