@@ -24,9 +24,19 @@ export function timeAgo(iso: string | null, now: number): string {
 
 export function duration(fromIso: string | null, toMs: number): string {
   if (!fromIso) return '—';
-  const seconds = Math.max(0, Math.round((toMs - new Date(fromIso).getTime()) / 1000));
-  const m = Math.floor(seconds / 60);
+  return formatSeconds(Math.max(0, Math.round((toMs - new Date(fromIso).getTime()) / 1000)));
+}
+
+export function durationBetween(fromIso: string | null, toIso: string | null): string {
+  if (!fromIso || !toIso) return '—';
+  return duration(fromIso, new Date(toIso).getTime());
+}
+
+export function formatSeconds(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
   const s = seconds % 60;
+  if (h > 0) return `${h}h ${m.toString().padStart(2, '0')}m`;
   return m > 0 ? `${m}m ${s.toString().padStart(2, '0')}s` : `${s}s`;
 }
 
@@ -40,4 +50,12 @@ export function firstLine(text: string): string {
 
 export function formatDate(iso: string | null): string {
   return iso ? new Date(iso).toLocaleString() : '—';
+}
+
+export function formatTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+export function formatDay(iso: string): string {
+  return new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric' });
 }

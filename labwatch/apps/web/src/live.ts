@@ -18,18 +18,24 @@ export function useLiveUpdates(): { state: LiveState; lastUpdate: string | null 
   const affected = (topic: UpdateTopic) => {
     switch (topic) {
       case 'ci':
-        return [trpc.overview.queryKey(), trpc.ciRuns.queryKey()];
+        return [trpc.overview, trpc.branches, trpc.ciRuns, trpc.ciRun, trpc.pulls];
       case 'commits':
-        return [trpc.commits.queryKey()];
+        return [trpc.overview, trpc.branches, trpc.commits];
       case 'pulls':
-        return [trpc.pulls.queryKey()];
+        return [trpc.branches, trpc.pulls, trpc.pull];
+      case 'reviews':
+        return [trpc.branches, trpc.pulls, trpc.pull, trpc.ciRuns, trpc.ciRun];
+      case 'checks':
+        return [trpc.ciRuns, trpc.ciRun];
       case 'source':
-        return [trpc.overview.queryKey(), trpc.sourceProbes.queryKey()];
+        return [trpc.overview, trpc.sourceProbes];
+      case 'status':
+        return [trpc.overview, trpc.statusPage, trpc.incidents];
       case 'events':
-        return [trpc.events.queryKey()];
+        return [trpc.events];
       case 'health':
       case 'ratelimit':
-        return [trpc.overview.queryKey()];
+        return [trpc.overview];
     }
   };
 
@@ -37,7 +43,7 @@ export function useLiveUpdates(): { state: LiveState; lastUpdate: string | null 
     trpc.updates.subscriptionOptions(undefined, {
       onData: (message) => {
         setLastUpdate(message.at);
-        for (const queryKey of affected(message.topic)) void queryClient.invalidateQueries({ queryKey });
+        for (const procedure of affected(message.topic)) void queryClient.invalidateQueries(procedure.pathFilter());
       },
     }),
   );

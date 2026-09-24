@@ -9,12 +9,14 @@ COPY packages/infra/package.json packages/infra/
 COPY services/collector/package.json services/collector/
 COPY services/gateway/package.json services/gateway/
 COPY apps/web/package.json apps/web/
-# Only the web app's own dependencies: the gateway and shared packages are used for types only,
-# and type imports are erased by the bundler (type-checking runs in CI, not in the image build)
+# The web app and the shared package (tab ordering, status levels, … run in the browser).
+# The gateway package is imported for types only; type imports are erased by the bundler
+# (type-checking runs in CI, not in the image build)
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
-    pnpm install --frozen-lockfile --filter @labwatch/web
+    pnpm install --frozen-lockfile --filter @labwatch/web --filter @labwatch/shared
+COPY packages/shared packages/shared
 COPY apps/web apps/web
-RUN pnpm --filter @labwatch/web build
+RUN pnpm --filter @labwatch/shared build && pnpm --filter @labwatch/web build
 
 FROM nginx:1.29-alpine
 COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf

@@ -12,14 +12,21 @@ export function EventFeed({ events, now }: { events: StoredEvent[] | undefined; 
         <span className="muted small">state changes only</span>
       </div>
       {!events || events.length === 0 ? (
-        <p className="muted">Quiet so far: events appear when something changes state (CI red/green, source down/up, a service stops).</p>
+        <p className="muted">Quiet so far: events appear when something changes state (CI red/green, a site or the source down/up, a service stops).</p>
       ) : (
         <ul className="list feed">
           {events.map((e) => {
             const url = typeof e.data.url === 'string' ? e.data.url : null;
             return (
               <li key={e.id}>
-                <Dot tone={tone[e.severity]} /> {url ? <a href={url} target="_blank" rel="noreferrer">{e.title}</a> : e.title}
+                <Dot tone={tone[e.severity]} />{' '}
+                {url ? (
+                  <a href={url} target="_blank" rel="noreferrer">
+                    {e.title}
+                  </a>
+                ) : (
+                  e.title
+                )}
                 <div className="muted small">
                   <span className="mono">{e.kind}</span> · <span title={formatDate(e.at)}>{timeAgo(e.at, now)}</span>
                 </div>
