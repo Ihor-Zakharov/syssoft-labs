@@ -1,0 +1,6 @@
+[
+  { "id": "univ-syssoft", "name": "System software course page", "url": "https://91.202.128.107/syssoft/" },
+  { "id": "univ-root", "name": "Server home page", "url": "https://91.202.128.107/" },
+  { "id": "knu-site", "name": "knu.ua", "url": "https://knu.ua/" },
+  { "id": "knu-triton", "name": "Triton student portal", "url": "https://student.triton.knu.ua/" }
+]

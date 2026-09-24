@@ -1,9 +1,12 @@
-# Terraform working files and local state (state lives in S3 after bootstrap)
+# Terraform working files and local state (real state lives in HCP Terraform)
 .terraform/
 *.tfstate
 *.tfstate.*
 *.tfplan
 crash.log
+
+# Lambda packages built by the archive provider
+.build/
 
 # Personal values (email etc.); an example is committed instead
 *.tfvars
