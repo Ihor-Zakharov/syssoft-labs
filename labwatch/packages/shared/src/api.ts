@@ -2,7 +2,7 @@ import type { CiState } from './ci.js';
 import type { Overall } from './overall.js';
 import type { ReviewRunOutcome, ReviewState } from './reviews.js';
 import type { CiJob, CiRun, Commit, CompareInfo, PullRequest, SourceStatus, StatusCheck } from './schemas.js';
-import type { StatusLevel, StatusOutcome, StatusScale } from './status.js';
+import type { StatusLevel, StatusOutcome, StatusScale, TargetState } from './status.js';
 import type { BranchTabInfo } from './tabs.js';
 
 /** A service or a store in the summary strip. */
@@ -201,22 +201,43 @@ export interface UptimeBucket {
   p95LatencyMs: number | null;
 }
 
+export interface StatusVantageCheck {
+  vantage: string;
+  label: string;
+  /** Latest check from this vantage (may be stale). */
+  current: StatusCheck | null;
+  state: StatusOutcome | 'no_data';
+}
+
 export interface StatusTargetView {
   id: string;
   name: string;
   url: string;
   group: string;
+  /** The most recent check among the selected vantages. */
   current: StatusCheck | null;
-  state: StatusOutcome | 'no_data';
+  /** Combined over the selected vantages. */
+  state: TargetState;
+  /** One entry per selected vantage. */
+  vantages: StatusVantageCheck[];
   /** Uptime over the selected scale. */
   uptime: number | null;
   buckets: UptimeBucket[];
 }
 
+export interface StatusVantageInfo {
+  id: string;
+  label: string;
+  /** Newest check from this vantage across all sites. */
+  lastCheckAt: string | null;
+}
+
 export interface StatusPageView {
   generatedAt: string;
+  /** `all` or one vantage id. */
   vantage: string;
-  vantages: string[];
+  /** Every vantage the page knows about (for the selector). */
+  vantages: StatusVantageInfo[];
   scale: StatusScale;
   timezone: string;
   level: StatusLevel;

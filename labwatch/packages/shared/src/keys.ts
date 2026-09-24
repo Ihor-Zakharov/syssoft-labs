@@ -21,6 +21,8 @@ export const RedisKeys = {
   sourceStatus: 'status:source',
   /** Latest check per target for one vantage (hash: target → StatusCheck JSON). */
   statusLatest: (vantage: string) => `status:checks:${vantage}`,
+  /** Sort key of the last AWS prober check copied into Postgres, per target. */
+  awsSyncCursor: (target: string) => `aws:sync:${target}`,
   /** Latest check of an external integration (IntegrationStatus JSON). */
   integration: (id: string) => `status:integration:${id}`,
   /** Last known integration levels, for change detection. */

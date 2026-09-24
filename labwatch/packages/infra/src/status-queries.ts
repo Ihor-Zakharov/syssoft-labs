@@ -21,11 +21,15 @@ interface BucketRow {
  * Uptime buckets for a scale, computed in SQL. Buckets are aligned in the given time zone
  * (whole local minutes / quarter hours / even hours / local days) with date_bin, the frame comes
  * from generate_series so buckets without checks are returned too (as "no data").
- * Degraded checks count as up; latency statistics only cover checks that got an answer.
+ *
+ * Several vantages (home, AWS) are combined per minute: a minute counts as up when ANY vantage got
+ * an answer (degraded answers count as up), and as degraded when none got a fast one. So the bars
+ * count minutes, and while one vantage is off (the PC) the other one still fills them.
+ * Latency statistics cover every answered check of the selected vantages.
  */
 export async function uptimeBuckets(
   db: Queryable,
-  args: { targets: readonly string[]; vantage: string; scale: StatusScale; timezone: string; now?: Date },
+  args: { targets: readonly string[]; vantages: readonly string[]; scale: StatusScale; timezone: string; now?: Date },
 ): Promise<Map<string, UptimeBucket[]>> {
   const { buckets, bucketSeconds } = STATUS_SCALES[args.scale];
   const { rows } = await db.query<BucketRow>(
@@ -38,30 +42,42 @@ export async function uptimeBuckets(
        from unnest($1::text[]) as t(target)
        cross join frame
        cross join generate_series(frame.first_start, frame.last_start, make_interval(secs => $3)) as gs
-     ), agg as (
-       select c.target,
-              date_bin(make_interval(secs => $3), c.checked_at at time zone $4, timestamp '2000-01-03') as bucket,
-              count(*)::int as total,
-              (count(*) filter (where c.outcome <> 'down'))::int as up,
-              (count(*) filter (where c.outcome = 'degraded'))::int as degraded,
-              (count(*) filter (where c.outcome = 'down'))::int as down,
-              round(avg(c.latency_ms) filter (where c.outcome <> 'down'))::int as avg_latency,
-              round((percentile_cont(0.95) within group (order by c.latency_ms) filter (where c.outcome <> 'down'))::numeric)::int as p95_latency
+     ), checks as (
+       select c.target, c.checked_at, c.outcome, c.latency_ms,
+              date_bin(make_interval(secs => $3), c.checked_at at time zone $4, timestamp '2000-01-03') as bucket
        from status_checks c, frame
-       where c.target = any($1::text[]) and c.vantage = $2
+       where c.target = any($1::text[]) and c.vantage = any($2::text[])
          and c.checked_at >= frame.first_start at time zone $4
          and c.checked_at < (frame.last_start + make_interval(secs => $3)) at time zone $4
-       group by 1, 2
+     ), minutes as (
+       select target, bucket, date_trunc('minute', checked_at) as minute,
+              bool_or(outcome <> 'down') as up,
+              bool_or(outcome = 'operational') as fast
+       from checks group by 1, 2, 3
+     ), agg as (
+       select target, bucket,
+              count(*)::int as total,
+              (count(*) filter (where up))::int as up,
+              (count(*) filter (where up and not fast))::int as degraded,
+              (count(*) filter (where not up))::int as down
+       from minutes group by 1, 2
+     ), lat as (
+       select target, bucket,
+              round(avg(latency_ms) filter (where outcome <> 'down'))::int as avg_latency,
+              round((percentile_cont(0.95) within group (order by latency_ms) filter (where outcome <> 'down'))::numeric)::int as p95_latency
+       from checks group by 1, 2
      )
      select s.target,
             s.bucket at time zone $4 as start,
             (s.bucket + make_interval(secs => $3)) at time zone $4 as "end",
             coalesce(a.total, 0) as total, coalesce(a.up, 0) as up,
             coalesce(a.degraded, 0) as degraded, coalesce(a.down, 0) as down,
-            a.avg_latency, a.p95_latency
-     from series s left join agg a on a.target = s.target and a.bucket = s.bucket
+            l.avg_latency, l.p95_latency
+     from series s
+     left join agg a on a.target = s.target and a.bucket = s.bucket
+     left join lat l on l.target = s.target and l.bucket = s.bucket
      order by s.target, s.bucket`,
-    [args.targets, args.vantage, bucketSeconds, args.timezone, buckets, (args.now ?? new Date()).toISOString()],
+    [args.targets, args.vantages, bucketSeconds, args.timezone, buckets, (args.now ?? new Date()).toISOString()],
   );
 
   const result = new Map<string, UptimeBucket[]>(args.targets.map((t) => [t, []]));
@@ -98,6 +114,51 @@ interface CheckRow {
   tls_ok: boolean | null;
   tls_error: string | null;
   error: string | null;
+}
+
+/**
+ * Inserts checks that are not stored yet (same target, vantage and time = the same check), in one
+ * statement. Makes syncing idempotent: re-reading a page from DynamoDB adds nothing twice.
+ * Returns the number of rows actually inserted.
+ */
+export async function insertChecksIfMissing(db: Queryable, checks: readonly StatusCheck[]): Promise<number> {
+  if (checks.length === 0) return 0;
+  const col = <T>(pick: (c: StatusCheck) => T) => checks.map(pick);
+  const { rows } = await db.query<{ n: number }>(
+    `with t as (
+       select * from unnest($1::text[], $2::text[], $3::timestamptz[], $4::text[], $5::int[], $6::int[], $7::bool[], $8::text[], $9::text[])
+         as t(target, vantage, checked_at, outcome, http_status, latency_ms, tls_ok, tls_error, error)
+     ), ins as (
+       insert into status_checks (target, vantage, checked_at, outcome, http_status, latency_ms, tls_ok, tls_error, error)
+       select distinct on (t.target, t.vantage, t.checked_at) t.* from t
+       where not exists (
+         select 1 from status_checks c where c.target = t.target and c.vantage = t.vantage and c.checked_at = t.checked_at
+       )
+       returning 1
+     )
+     select count(*)::int as n from ins`,
+    [
+      col((c) => c.target),
+      col((c) => c.vantage),
+      col((c) => c.checkedAt),
+      col((c) => c.outcome),
+      col((c) => c.httpStatus),
+      col((c) => c.latencyMs),
+      col((c) => c.tlsOk),
+      col((c) => c.tlsError),
+      col((c) => c.error),
+    ],
+  );
+  return rows[0]?.n ?? 0;
+}
+
+/** Newest stored check time of one target from one vantage (the sync cursor after a Redis restart). */
+export async function newestCheckAt(db: Queryable, target: string, vantage: string): Promise<Date | null> {
+  const { rows } = await db.query<{ at: Date | null }>(
+    'select max(checked_at) as at from status_checks where target = $1 and vantage = $2',
+    [target, vantage],
+  );
+  return rows[0]?.at ?? null;
 }
 
 /** The newest check of every target (index-only lookups thanks to (target, vantage, checked_at)). */
@@ -141,12 +202,12 @@ interface IncidentRow {
 
 export async function recentIncidents(
   db: Queryable,
-  args: { vantage: string; limit: number; names: ReadonlyMap<string, string>; now?: Date },
+  args: { vantages: readonly string[]; limit: number; names: ReadonlyMap<string, string>; now?: Date },
 ): Promise<StatusIncident[]> {
   const { rows } = await db.query<IncidentRow>(
     `select id, target, vantage, started_at, resolved_at, failed_checks, last_error
-     from status_incidents where vantage = $1 order by started_at desc limit $2`,
-    [args.vantage, args.limit],
+     from status_incidents where vantage = any($1::text[]) order by started_at desc limit $2`,
+    [args.vantages, args.limit],
   );
   const now = args.now ?? new Date();
   return rows.map((r) => ({

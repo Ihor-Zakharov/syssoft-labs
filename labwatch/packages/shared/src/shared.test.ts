@@ -4,13 +4,17 @@ import { ciStateOf, latestPerWorkflow, type RunLike } from './ci.js';
 import { overallStatus, worstLevel } from './overall.js';
 import { aggregateReviewState, countFindings, reviewRunOutcome } from './reviews.js';
 import {
+  AWS_VANTAGE,
   STATUS_SCALES,
+  combinedOutcome,
   currentOutcome,
   formatUptime,
   isStatusScale,
+  levelFromStates,
   statusLevel,
   uptimeRatio,
   uptimeTone,
+  vantageLabel,
   type LatestCheck,
 } from './status.js';
 import { arrangeBranchTabs, type BranchTabInfo } from './tabs.js';
@@ -130,6 +134,35 @@ describe('status page', () => {
     expect(statusLevel([check('down')], now)).toBe('major_outage');
     // stale targets are ignored, not counted as down
     expect(statusLevel([check('down'), check('operational', 900), check('operational')], now)).toBe('partial_outage');
+  });
+
+  it('combines the vantages of one site', () => {
+    // home and AWS both fresh
+    expect(combinedOutcome([check('operational'), check('operational')], now)).toBe('operational');
+    expect(combinedOutcome([check('operational'), check('degraded')], now)).toBe('degraded');
+    expect(combinedOutcome([check('down'), check('operational')], now)).toBe('partial');
+    expect(combinedOutcome([check('down'), check('down')], now)).toBe('down');
+    // the PC was off: its stale check does not count, AWS alone decides
+    expect(combinedOutcome([check('down', 900), check('operational')], now)).toBe('operational');
+    expect(combinedOutcome([null, check('down')], now)).toBe('down');
+    expect(combinedOutcome([null, check('operational', 900)], now)).toBe('no_data');
+  });
+
+  it('turns site states into the banner', () => {
+    expect(levelFromStates([])).toBe('no_data');
+    expect(levelFromStates(['no_data', 'no_data'])).toBe('no_data');
+    expect(levelFromStates(['operational', 'operational', 'no_data'])).toBe('operational');
+    expect(levelFromStates(['operational', 'degraded'])).toBe('degraded');
+    // one site unreachable from one vantage only → partial outage, not major
+    expect(levelFromStates(['partial', 'operational', 'operational', 'operational'])).toBe('partial_outage');
+    expect(levelFromStates(['down', 'operational', 'operational', 'operational'])).toBe('partial_outage');
+    expect(levelFromStates(['down', 'down', 'down', 'partial'])).toBe('major_outage');
+  });
+
+  it('names the vantages', () => {
+    expect(vantageLabel('home')).toBe('Home');
+    expect(vantageLabel(AWS_VANTAGE)).toBe('AWS Frankfurt');
+    expect(vantageLabel('gcp-x')).toBe('gcp-x');
   });
 
   it('reports no data for stale targets', () => {

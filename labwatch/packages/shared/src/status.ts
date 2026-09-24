@@ -16,8 +16,15 @@ export const STATUS_TARGETS: readonly StatusTargetConfig[] = [
   { id: 'knu-triton', name: 'Triton student portal', group: 'Taras Shevchenko National University of Kyiv', url: 'https://student.triton.knu.ua/' },
 ];
 
-/** Where checks are made from. Only this PC for now; a cloud vantage (e.g. aws-eu-central-1) can be added later. */
+/** Where checks are made from: this PC, and the 24/7 prober in AWS (Lambda every minute → DynamoDB). */
 export const DEFAULT_VANTAGE = 'home';
+export const AWS_VANTAGE = 'aws-eu-central-1';
+
+const VANTAGE_LABELS: Readonly<Record<string, string>> = { [DEFAULT_VANTAGE]: 'Home', [AWS_VANTAGE]: 'AWS Frankfurt' };
+
+export function vantageLabel(vantage: string): string {
+  return VANTAGE_LABELS[vantage] ?? vantage;
+}
 
 export const STATUS_OUTCOMES = ['operational', 'degraded', 'down'] as const;
 export type StatusOutcome = (typeof STATUS_OUTCOMES)[number];
@@ -60,6 +67,35 @@ export function statusLevel(latest: ReadonlyArray<LatestCheck | null>, now: Date
   const down = fresh.filter((c) => c.outcome === 'down').length;
   if (down > 0) return down * 2 > fresh.length ? 'major_outage' : 'partial_outage';
   return fresh.some((c) => c.outcome === 'degraded') ? 'degraded' : 'operational';
+}
+
+/** State of one site across vantages; `partial` = down from some vantages but reachable from others. */
+export type TargetState = StatusOutcome | 'partial' | 'no_data';
+
+/**
+ * Combines the latest check of every vantage for one site. Only fresh checks count (a vantage that
+ * is off — e.g. the PC — is unknown, not down). Down everywhere → down; down somewhere → partial.
+ */
+export function combinedOutcome(latest: ReadonlyArray<LatestCheck | null>, now: Date, noDataAfterMs = STATUS_NO_DATA_AFTER_MS): TargetState {
+  const fresh = latest.filter((c): c is LatestCheck => isFresh(c, now, noDataAfterMs));
+  if (fresh.length === 0) return 'no_data';
+  const down = fresh.filter((c) => c.outcome === 'down').length;
+  if (down === fresh.length) return 'down';
+  if (down > 0) return 'partial';
+  return fresh.some((c) => c.outcome === 'degraded') ? 'degraded' : 'operational';
+}
+
+/**
+ * Page banner from the states of all sites: down on all or a majority of the known sites → major
+ * outage; some sites down, or a site down from only one vantage → partial outage.
+ */
+export function levelFromStates(states: readonly TargetState[]): StatusLevel {
+  const known = states.filter((s) => s !== 'no_data');
+  if (known.length === 0) return 'no_data';
+  const down = known.filter((s) => s === 'down').length;
+  if (down > 0) return down * 2 > known.length ? 'major_outage' : 'partial_outage';
+  if (known.includes('partial')) return 'partial_outage';
+  return known.includes('degraded') ? 'degraded' : 'operational';
 }
 
 // Uptime bars: the scale switch and how each scale is split into buckets.
