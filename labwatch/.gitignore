@@ -1,0 +1,7 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+!.env.example
+# The repository-wide Visual Studio template ignores "**/[Pp]ackages/*" (NuGet); here packages/ is the pnpm workspace
+!/packages/*

@@ -1,0 +1,8 @@
+packages:
+  - packages/*
+  - services/*
+  - apps/*
+
+# pnpm runs dependency install scripts only for packages listed here
+allowBuilds:
+  esbuild: true
