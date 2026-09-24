@@ -11,4 +11,8 @@
     <Project Path="Task3/Task3.RegistryViewer.Tests/Task3.RegistryViewer.Tests.csproj" />
     <Project Path="Task3/Task3.RegistryViewer/Task3.RegistryViewer.csproj" />
   </Folder>
+  <Folder Name="/Task4/">
+    <Project Path="Task4/Task4.Mailer.Tests/Task4.Mailer.Tests.csproj" />
+    <Project Path="Task4/Task4.Mailer/Task4.Mailer.csproj" />
+  </Folder>
 </Solution>

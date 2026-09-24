@@ -1,0 +1,16 @@
+# Local SMTP server that catches every message: nothing is delivered to real mailboxes.
+#   docker compose -f Lab1/Task4/compose.yaml up -d      (from WSL: the path under /mnt/c works too)
+#   SMTP  localhost:1025  (no TLS, no auth)  — used by the integration tests and for trying the program
+#   Web   http://localhost:8025                — inbox UI and the REST API the tests read
+name: lab1-mail
+
+services:
+  mailpit:
+    image: axllent/mailpit:v1.31.2
+    ports:
+      - "127.0.0.1:1025:1025"
+      - "127.0.0.1:8025:8025"
+    environment:
+      MP_MAX_MESSAGES: 500
+    mem_limit: 128m
+    restart: unless-stopped
