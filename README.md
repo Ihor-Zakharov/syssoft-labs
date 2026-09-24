@@ -15,6 +15,15 @@ All tests: `dotnet test Lab1/Lab1.slnx`.
 | [Task3](Lab1/Task3/) | Windows Forms: shows the `REG_MULTI_SZ` value `P5` from `HKLM\SOFTWARE\Zakharov`, creates `P6` with two lines |
 | [Task4](Lab1/Task4/) | sends an email with the date, time, first and last name; the recipient and the subject are required |
 
+## Run the labs: `sysprog`
+
+```
+sysprog lab1 task1 flashrom     # build if needed and run a task in the current folder
+sysprog list | test lab1 | help
+```
+
+PowerShell and bash versions with Tab completion — install with `tools/sysprog.ps1 install` or `tools/sysprog install`; see [tools/README.md](tools/README.md).
+
 ## labwatch — [`labwatch/`](labwatch/README.md)
 
 Monitoring dashboard for this repository and the lab's environment (NestJS microservices, tRPC, React, PostgreSQL,
