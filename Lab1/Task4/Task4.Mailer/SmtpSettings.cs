@@ -16,6 +16,11 @@ internal sealed record SmtpSettings(string Host, int Port, SmtpSecurity Security
 {
     public const string Prefix = "LAB1_SMTP_";
 
+    /// <summary>Real mail goes through Gmail unless another server is configured.</summary>
+    public const string DefaultHost = "smtp.gmail.com";
+
+    public const string AppPasswordsUrl = "https://myaccount.google.com/apppasswords";
+
     public SecureSocketOptions SocketOptions => Security switch
     {
         SmtpSecurity.StartTls => SecureSocketOptions.StartTls,     // plain connection, then STARTTLS (port 587)
@@ -31,14 +36,11 @@ internal sealed record SmtpSettings(string Host, int Port, SmtpSecurity Security
     {
         string? Get(string name) => environment(Prefix + name) is { } value && value.Trim().Length > 0 ? value.Trim() : null;
 
-        var host = Get("HOST");
-        if (host is null)
-        {
-            error = $"{Prefix}HOST is not set.";
-            return null;
-        }
+        var customHost = Get("HOST");
+        var host = customHost ?? DefaultHost;
 
-        var securityText = Get("SECURITY") ?? "auto";
+        // Gmail on 587 needs STARTTLS; a custom server keeps "auto" unless told otherwise
+        var securityText = Get("SECURITY") ?? (customHost is null ? "starttls" : "auto");
         SmtpSecurity? security = securityText.ToLowerInvariant() switch
         {
             "auto" => SmtpSecurity.Auto,
@@ -66,6 +68,13 @@ internal sealed record SmtpSettings(string Host, int Port, SmtpSecurity Security
         if ((user is null) != (password is null))
         {
             error = $"Set both {Prefix}USER and {Prefix}PASSWORD, or neither (for servers without login).";
+            return null;
+        }
+
+        if (customHost is null && user is null)
+        {
+            error = $"Gmail needs a login: set {Prefix}USER (your Gmail address) and {Prefix}PASSWORD (an app password, " +
+                    $"{AppPasswordsUrl}). For a local test server such as Mailpit set {Prefix}HOST and {Prefix}FROM instead.";
             return null;
         }
 
