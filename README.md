@@ -58,3 +58,16 @@ Repository settings → Secrets and variables → Actions:
 
 The review action only runs when `review.yml` in a pull request is identical to the one on `main`, so changes to
 `review.yml` take effect after they reach `main`.
+
+## AI-assisted development
+
+| File | Purpose |
+|---|---|
+| [`AGENTS.md`](AGENTS.md) | rules for every AI agent: repo map, environment split, commands, conventions, security rules, definition of done |
+| [`CLAUDE.md`](CLAUDE.md) | Claude Code entry point: imports `AGENTS.md` + Claude-specific notes |
+| [`.agents/skills/`](.agents/skills/) | shared skills (also `.claude/skills`): run/add a lab task, verify before push, labwatch development, Terraform changes, PR review, defense prep |
+| [`.claude/agents/`](.claude/agents/) | subagents: `lab-reviewer`, `test-runner`, `infra-auditor` |
+| [`.claude/settings.json`](.claude/settings.json) | shared permissions: safe checks allowed, pushes/merges ask, secret files and `terraform apply/destroy` denied |
+
+The CI review (`review.yml`) loads the project's `CLAUDE.md` and settings, so the same rules guide it.
+`.claude/skills` is a symlink: run Claude Code from WSL, or enable `core.symlinks` + Developer Mode on Windows.
