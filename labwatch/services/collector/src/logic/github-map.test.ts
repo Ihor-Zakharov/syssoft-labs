@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mapCommit, mapPull, mapRun, pickBranches, type RawRun } from './github-map.js';
+import { labsFromTree, mapComment, mapCommit, mapCommitFiles, mapCompare, mapJob, mapPull, mapReview, mapRun, pickBranches, type RawRun } from './github-map.js';
 
 describe('github mapping', () => {
   it('maps a workflow run', () => {
@@ -59,3 +59,102 @@ describe('github mapping', () => {
     expect(picked.map((x) => x.name)).toEqual(['main', 'alpha', 'beta']);
   });
 });
+
+describe('github mapping (fixtures)', () => {
+  it('maps jobs with steps', () => {
+    const job = mapJob({
+      id: 1,
+      run_id: 2,
+      name: 'build-test',
+      status: 'completed',
+      conclusion: 'success',
+      started_at: '2026-09-24T12:00:00Z',
+      completed_at: '2026-09-24T12:01:00Z',
+      html_url: 'https://github.com/o/r/actions/runs/2/job/1',
+      steps: [
+        { number: 1, name: 'Set up job', status: 'completed', conclusion: 'success', started_at: 'a', completed_at: 'b' },
+        { number: 2, name: 'Test', status: 'completed', conclusion: 'failure' },
+      ],
+    });
+    expect(job.steps).toEqual([
+      { number: 1, name: 'Set up job', status: 'completed', conclusion: 'success', startedAt: 'a', completedAt: 'b' },
+      { number: 2, name: 'Test', status: 'completed', conclusion: 'failure', startedAt: null, completedAt: null },
+    ]);
+    const noSteps = { id: 3, run_id: 2, name: 'queued', status: 'queued', conclusion: null, started_at: null, completed_at: null, html_url: null };
+    expect(mapJob(noSteps).steps).toEqual([]);
+  });
+
+  it('maps compare results to ahead/behind and areas', () => {
+    const compare = mapCompare(
+      'main',
+      'aaa',
+      'lab1-task3',
+      'bbb',
+      {
+        status: 'diverged',
+        ahead_by: 2,
+        behind_by: 1,
+        commits: [{ sha: 'c1' }, { sha: 'c2' }],
+        files: [{ filename: 'Lab1/Task3/Form1.cs' }, { filename: 'Lab1/README.md' }, { filename: '.github/workflows/ci.yml' }],
+      },
+      new Date('2026-09-24T12:00:00Z'),
+    );
+    expect(compare).toMatchObject({ aheadBy: 2, behindBy: 1, aheadShas: ['c1', 'c2'], areas: ['Lab 1', 'CI'], fileCount: 3 });
+  });
+
+  it('maps commit files, trees, reviews and comments', () => {
+    expect(mapCommitFiles({ sha: 'x', files: [{ filename: 'a', status: 'added' }] })).toEqual({
+      files: [{ path: 'a', status: 'added' }],
+      truncated: false,
+    });
+    expect(mapCommitFiles({ sha: 'x' })).toEqual({ files: [], truncated: false });
+    expect(
+      labsFromTree({
+        tree: [
+          { path: 'Lab2', type: 'tree' },
+          { path: 'Lab1', type: 'tree' },
+          { path: 'Lab3.md', type: 'blob' },
+          { path: 'labwatch', type: 'tree' },
+          { path: 'Lab10', type: 'tree' },
+        ],
+      }),
+    ).toEqual([1, 2, 10]);
+    expect(mapReview({ id: 5, user: { login: 'review-bot[bot]' }, state: 'COMMENTED', body: null })).toEqual({
+      id: 5,
+      author: 'review-bot[bot]',
+      state: 'COMMENTED',
+      body: '',
+      submittedAt: null,
+      htmlUrl: null,
+    });
+    const inline = mapComment(
+      {
+        id: 9,
+        user: { login: 'review-bot[bot]' },
+        body: '**Bug**',
+        created_at: 'c',
+        updated_at: 'u',
+        html_url: 'h',
+        path: 'Lab1/x.cs',
+        line: null,
+        original_line: 27,
+      },
+      'inline',
+    );
+    expect(inline).toMatchObject({ kind: 'inline', path: 'Lab1/x.cs', line: 27, inReplyToId: null });
+    expect(mapPull('o/r', { ...basePull, head: { ref: 't', sha: 'abc' } }).headSha).toBe('abc');
+  });
+});
+
+const basePull = {
+  number: 1,
+  title: 't',
+  state: 'open',
+  merged_at: null,
+  user: null,
+  head: { ref: 't' },
+  base: { ref: 'main' },
+  created_at: 'a',
+  updated_at: 'b',
+  html_url: 'u',
+};

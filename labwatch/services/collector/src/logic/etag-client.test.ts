@@ -85,3 +85,18 @@ describe('EtagClient', () => {
     expect(parseRateLimit(new Headers())).toBeNull();
   });
 });
+
+describe('EtagClient without cache', () => {
+  it('neither sends nor stores ETags for immutable resources', async () => {
+    const cache = new MemoryCache();
+    await cache.set('https://api.github.com/c/1', { etag: '"x"', data: 'old' });
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(json('fresh', 200, { etag: '"y"' }));
+    const client = new EtagClient({ fetch: fetchMock, cache, userAgent: 'test' });
+
+    const result = await client.getJson('/c/1', (r: string) => r, false);
+
+    expect(result.data).toBe('fresh');
+    expect((fetchMock.mock.calls[0]![1]!.headers as Record<string, string>)['If-None-Match']).toBeUndefined();
+    expect(cache.store.get('https://api.github.com/c/1')).toEqual({ etag: '"x"', data: 'old' });
+  });
+});

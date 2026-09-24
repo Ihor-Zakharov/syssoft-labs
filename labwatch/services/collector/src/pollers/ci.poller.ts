@@ -4,6 +4,7 @@ import { RedisKeys, type CiJob, type CiRun, type CiStatus } from '@labwatch/shar
 import { CONFIG, type CollectorConfig } from '../config.js';
 import { GithubService } from '../github/github.service.js';
 import { StatusStore } from '../infra/status-store.js';
+import { SyncService } from '../sync/sync.service.js';
 import { DB } from '../infra/tokens.js';
 import { excludedColumns } from '../infra/upsert.js';
 import { diffCi, type CiState } from '../logic/ci-diff.js';
@@ -18,14 +19,12 @@ export class CiPoller extends PollingService {
     @Inject(DB) private readonly db: DbHandle,
     private readonly github: GithubService,
     private readonly store: StatusStore,
+    private readonly sync: SyncService,
   ) {
     super('CiPoller');
   }
 
   protected async poll(): Promise<number> {
-    const wait = this.github.waitMs();
-    if (wait > 0) return wait;
-
     const intervals = this.github.intervals;
     const allRuns: CiRun[] = [];
 
@@ -44,7 +43,8 @@ export class CiPoller extends PollingService {
       let jobsChanged = false;
       if (intervals.fetchJobs) {
         for (const run of runs.filter((r) => isActiveStatus(r.status)).slice(0, MAX_JOB_FETCHES_PER_POLL)) {
-          const result = await this.github.jobs(repo, run.id);
+          if (!this.github.canCall('ci')) break;
+          const result = await this.github.jobs(repo, run.id, 'ci');
           jobs[run.id] = result.data;
           if (result.changed && result.data.length > 0) {
             jobsChanged = true;
@@ -74,6 +74,8 @@ export class CiPoller extends PollingService {
       if (changed || jobsChanged) await this.store.publish('ci');
     }
 
+    // Finished runs may now have test reports and final jobs to fetch
+    void this.sync.run();
     return nextCiDelay(allRuns, intervals);
   }
 }

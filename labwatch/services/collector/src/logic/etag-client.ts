@@ -73,9 +73,13 @@ export class EtagClient {
     return Boolean(this.options.token);
   }
 
-  async getJson<Raw, T>(path: string, map: (raw: Raw) => T): Promise<FetchResult<T>> {
+  /**
+   * @param cache false for immutable resources that are stored elsewhere anyway (commit details):
+   *              no If-None-Match, nothing written to the ETag cache.
+   */
+  async getJson<Raw, T>(path: string, map: (raw: Raw) => T, cache = true): Promise<FetchResult<T>> {
     const url = this.baseUrl + path;
-    const cached = await this.options.cache.get<T>(url);
+    const cached = cache ? await this.options.cache.get<T>(url) : null;
 
     const headers: Record<string, string> = {
       Accept: 'application/vnd.github+json',
@@ -100,7 +104,7 @@ export class EtagClient {
 
     const data = map((await response.json()) as Raw);
     const etag = response.headers.get('etag');
-    if (etag) await this.options.cache.set(url, { etag, data });
+    if (etag && cache) await this.options.cache.set(url, { etag, data });
     return { data, changed: true, status: response.status, rateLimit };
   }
 }
