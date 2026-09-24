@@ -31,8 +31,8 @@ Redis `127.0.0.1:6379` (passwords in `.env`).
 |---|---|---|
 | `POSTGRES_PASSWORD`, `REDIS_PASSWORD` | the stack | set |
 | `GITHUB_TOKEN` | 5000 req/h instead of 60 (fine-grained PAT, *Public repositories*, no permissions) | set (rotated on 2026-09-24 after an exposure in an agent log) |
-| `HCP_TERRAFORM_TOKEN` (+ `HCP_TERRAFORM_ORG`, default `zakharov-syssoft`) | Integrations → HCP Terraform card | **not set** → card shows "Not configured" |
-| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION=eu-central-1` | reading the AWS prober (IAM user `syssoft-labs-labwatch-reader`, DynamoDB read-only on one table) | **not set**, and the code that uses them is **not written yet** (§5.4) |
+| `HCP_TERRAFORM_TOKEN` (+ `HCP_TERRAFORM_ORG`, default `zakharov-syssoft`) | Integrations → HCP Terraform card | set (organization token) → Connected, 2 workspaces |
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION=eu-central-1` | reading the AWS prober (IAM user `syssoft-labs-labwatch-reader`, DynamoDB read-only on one table) | set → AWS card Connected, AWS checks synced into Postgres |
 
 Secret handling rules (after the incident): never `cat`/`grep`/diff `.env`, `~/.aws`, `~/.terraform.d`; check
 presence only (`grep -c '^NAME=.\+' .env`); scan only `git diff --cached` before committing.
@@ -60,26 +60,26 @@ vendor status pages (GitHub, HashiCorp, AWS Health) ──every 5 min──► c
 
 ## 4. Done (on `labwatch-tabs`)
 
-- Top tabs `System | Repository`; Repository = `CI runs | Commits | Pull requests | Status` + branch row
-  (`Overview`, `main`, branches by activity, merged/idle → `…`), hash routing (`#system`, `#repo/ci/overview`, …),
+- Top tabs `System | Repository | Status`; Repository = `CI runs | Commits | Pull requests` + branch row
+  (`Overview`, `main`, branches by activity, merged/idle → `…`), hash routing (`#system`, `#repo/ci/overview`,
+  `#status/24h`; `#repo/status/…` redirects),
   no layout shift (verified with bounding-box checks at 1400/1024/760 px).
 - CI run details (jobs, steps, logs link, test report from a `dorny/test-reporter` check run — **no such check
   exists yet**, see §6), review results (claude[bot] inline comments, findings count, "review ran, no comments").
 - Commits with area badges from changed paths (`Lab N`, `CI`, `Infra`, `Repo`), ahead/behind main.
-- Status page (home vantage): banner, 1h/24h/7d/30d/90d uptime bars (SQL `date_bin`), incidents, TLS chip.
-- Integrations: GitHub (connection + githubstatus.com), HCP Terraform (vendor status; our part needs the token),
-  AWS (vendor status from AWS Health; our part is a placeholder).
-- 116 tests (vitest) on `labwatch-tabs`.
+- Status page with two vantages (Home + AWS Frankfurt): combined banner (a site down from one vantage only →
+  Partial Outage), vantage selector, per-vantage latency, 1h/24h/7d/30d/90d bars counting minutes (up if any
+  vantage got an answer), incidents per vantage, TLS chip.
+- AWS: `DynamoAwsProbeReader` (card: Connected < 3 min, Degraded 3–10 min, Unreachable, Auth error) and
+  `AwsStatusSync` (DynamoDB → `status_checks`, incremental, idempotent, throttling backoff) — `services/collector/src/aws`.
+- Integrations: GitHub, AWS and HCP Terraform all Connected with the keys in `.env`.
+- 151 tests (vitest; 7 SQL tests need a Postgres, e.g. `DATABASE_URL=… pnpm --filter @labwatch/infra test`).
 
 ## 5. Unfinished work (`labwatch-wip`) — how to finish
 
 Start with `git switch labwatch-wip` (or cherry-pick parts onto `labwatch-tabs`).
 
-### 5.1 Status as a third top-level tab — mostly done in `route.ts`
-
-`apps/web/src/route.ts` already has `Route = { top: 'system' } | { top: 'repo', … } | { top: 'status', scale }`,
-`#status/<scale>` and legacy redirects. To do: finish `App.tsx` (render the pill `System | Repository | Status`,
-remove Status from the Repository row), run the route tests, re-run the layout-shift check.
+### 5.1 Status as a third top-level tab — **done** on `labwatch-tabs` (`2abafe9`)
 
 ### 5.2 Pagination (20 rows) — half-wired, **gateway does not compile**
 
@@ -113,22 +113,13 @@ images. Postgres now runs `postgres:17.11-bookworm` (same build and glibc as bef
 resume semantic search switch back to a pgvector image **with the same Debian base** (`pgvector/pgvector:pg17` was
 bookworm) — a different glibc changes text collation and would require `REINDEX`.
 
-### 5.4 AWS integration — not started
+### 5.4 AWS integration — **done** on `labwatch-tabs`
 
-AWS side is live: Lambda `syssoft-labs-status-prober` (every minute, vantage `aws-eu-central-1`) writes to DynamoDB
-`syssoft-labs-status-checks` (eu-central-1): raw checks `pk=check#<targetId>`, `sk=<ISO time>`; hourly/daily rollups
-`hour#<id>` / `day#<id>` with ADD counters; TTL `expiresAt`. Target ids match labwatch: `univ-syssoft`,
-`univ-root`, `knu-site`, `knu-triton`. Schema/code: `~/projects/syssoft-labs-infra/infra/aws/status/`.
-To do:
-1. User creates an access key for `syssoft-labs-labwatch-reader` (console → IAM → Users → Security credentials →
-   *Application running outside AWS*) and adds `AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY/AWS_REGION` to `.env`.
-2. `AwsProbeReader` (AWS SDK v3 DynamoDB client, credentials from env only): Integrations → AWS card
-   = Connected if the latest check < 3 min, Degraded 3–10 min, Auth error / Unreachable on SDK errors,
-   Not configured without keys. Replace the stale "Not deployed yet" text.
-3. Collector syncs AWS raw checks into `status_checks` with vantage `aws-eu-central-1` every 2 min (incremental by
-   `sk`, small pages, backoff on `ProvisionedThroughputExceededException`; the table has only 3 RCU).
-4. Status page: vantage legend (Home / AWS Frankfurt); a site down from one vantage only → Partial Outage;
-   AWS data fills the bars while the PC was off.
+The reader key is in `.env`; the card is Connected and the Status page combines Home and AWS. If the card ever shows
+**Auth error**, the collector log names the AWS error class (e.g. `UnrecognizedClientException` = wrong key id,
+`InvalidSignatureException` = wrong secret, `AccessDeniedException` = the user lacks read access to the table);
+create a new access key for `syssoft-labs-labwatch-reader`, replace the two lines in `.env` and run
+`docker compose up -d collector`.
 
 ## 6. Other follow-ups
 

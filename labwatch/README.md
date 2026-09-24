@@ -92,8 +92,8 @@ gutter is reserved, tab captions reserve their bold width, tables use fixed colu
 | Integration | Our connection | Vendor status (every 5 min) |
 |---|---|---|
 | GitHub | token present and accepted, rate limit (remaining/limit, reset), labwatch's hourly budget, average API latency of the last calls — no extra requests | githubstatus.com: overall indicator, API Requests, Actions, Pages, Git Operations, open incidents |
-| HCP Terraform | with `HCP_TERRAFORM_TOKEN` (read-only team/organization token) every 5 min: the workspaces of `HCP_TERRAFORM_ORG` (execution mode, lock, resource count, current state version); without it "Not configured" | status.hashicorp.com: HCP Terraform, Terraform Registry, HCP API |
-| AWS | the 24/7 prober runs in AWS (Lambda + DynamoDB, eu-central-1); until the read-only key of `syssoft-labs-labwatch-reader` is in `.env` and the DynamoDB reader is written (`docs/HANDOFF.md` §5.4) the card says "Not configured" and shows where the prober runs |
+| HCP Terraform | with `HCP_TERRAFORM_TOKEN` (an organization token — the Free plan has no read-only token type) every 5 min: the workspaces of `HCP_TERRAFORM_ORG` (execution mode, lock, resource count, current state version); without it "Not configured" | status.hashicorp.com: HCP Terraform, Terraform Registry, HCP API |
+| AWS | with the read-only key of `syssoft-labs-labwatch-reader` (`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`) every minute: the newest check of every site in DynamoDB `syssoft-labs-status-checks` — Connected if < 3 min old, Degraded 3–10 min, Unreachable after that, Auth error when AWS rejects the key; without the key "Not configured" | AWS Health public events for eu-central-1 |
 
 ### Repository
 
@@ -159,23 +159,33 @@ compare API (the files changed since the merge base).
 
 ## Status page
 
-Four sites (`packages/shared/src/status.ts`) are checked every 60 s with a 10 s deadline from vantage `home`
-(this PC). Every check is stored (`status_checks`: target, vantage, time, outcome, HTTP status, latency, TLS
+Four sites (`packages/shared/src/status.ts`) are checked every minute from two vantage points: `home` (this PC,
+the collector, 10 s deadline) and `aws-eu-central-1` (a Lambda in Frankfurt, 24/7 — see `infra/aws` in the
+`infra-aws` worktree). The collector copies the AWS checks from DynamoDB into Postgres every
+`AWS_STATUS_SYNC_INTERVAL_S` (120), incrementally per site from the last synced check (Redis cursor
+`aws:sync:<target>`, Postgres as the fallback), idempotently, with backoff when DynamoDB throttles; the first sync
+reaches back `AWS_STATUS_BACKFILL_HOURS` (24). Every check is stored (`status_checks`: target, vantage, time, outcome, HTTP status, latency, TLS
 result) — about 520k rows in 90 days — and checks older than `STATUS_RETENTION_DAYS` (120) are deleted hourly.
 
 - **down** — timeout, connection error, 5xx or an unexpected 4xx; **degraded** — answered, but slower than
   `STATUS_DEGRADED_MS` (2000); **operational** otherwise. TLS problems are **not** an outage: the certificate
   result is recorded (`tls_ok`, `tls_error`) and shown as a small warning chip, availability is judged by HTTP.
-- Banner: `All Systems Operational`, `Degraded Performance`, `Partial Outage` (some down), `Major Outage` (all or
-  more than half down), or grey `No data` when there was no check in the last 3 minutes (PC off, collector down).
+- Vantages are combined: a site is **down** when every vantage with a fresh check (≤ 3 min) says so, **partial**
+  when only some do; a stale vantage (the PC was off) is unknown, not down.
+- Banner: `All Systems Operational`, `Degraded Performance`, `Partial Outage` (some sites down, or a site down from
+  one vantage only), `Major Outage` (all or more than half of the sites down), or grey `No data`.
+- A selector shows `All vantages` (combined), `Home` or `AWS Frankfurt`; each site shows the latency from each
+  vantage.
 - Uptime bars per scale, computed in SQL with `date_bin` over a `generate_series` frame, aligned in
   `STATUS_TIMEZONE` (Europe/Kyiv): `1h` = 60 × 1 min, `24h` = 96 × 15 min, `7d` = 84 × 2 h, `30d` / `90d` = days.
-  Colour by uptime: ≥ 99.9 % green, ≥ 99 % light green, ≥ 95 % yellow, below red, no data grey. Hover or use the
-  arrow keys for period, uptime, avg/p95 latency and failed checks.
+  Bars count **minutes**: a minute is up when any selected vantage got an answer, so while the PC is off the AWS
+  checks still fill them. Colour by uptime: ≥ 99.9 % green, ≥ 99 % light green, ≥ 95 % yellow, below red, no data
+  grey. Hover or use the arrow keys for period, uptime, avg/p95 latency and failed minutes.
 - Incidents open on the transition to down and resolve on recovery (at most one open incident per target,
   enforced by a partial unique index); both transitions go into the event feed as `status.down` / `status.up`.
 
-The schema and the page are per vantage point, so a cloud vantage (e.g. `aws-eu-central-1`) can be added later.
+Incidents are tracked per vantage (the event title says "from AWS Frankfurt" for the cloud one); checks older
+than 10 minutes that arrive with a sync update the incidents but raise no events.
 
 ## Redis vs Postgres
 
@@ -234,6 +244,10 @@ what `Lab1/Task1` does in C#.
 | `STATUS_DEGRADED_MS`, `STATUS_RETENTION_DAYS` | `2000`, `120` | collector |
 | `STATUS_TIMEZONE` | `Europe/Kyiv` | gateway |
 | `HCP_TERRAFORM_TOKEN`, `HCP_TERRAFORM_ORG` | empty (Not configured), `zakharov-syssoft` | collector |
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | empty (AWS card "Not configured", no sync) — key of `syssoft-labs-labwatch-reader` | collector |
+| `AWS_REGION`, `AWS_STATUS_TABLE`, `AWS_STATUS_VANTAGE` | `eu-central-1`, `syssoft-labs-status-checks`, `aws-eu-central-1` | collector |
+| `AWS_STATUS_SYNC_INTERVAL_S`, `AWS_STATUS_BACKFILL_HOURS` | `120`, `24` | collector |
+| `STATUS_VANTAGES` | `home,aws-eu-central-1` | gateway |
 | `AWS_HEALTH_REGION`, `INTEGRATIONS_INTERVAL_S` | `eu-central-1`, `300` | collector |
 
 Every container has a `mem_limit` (Postgres 1 GB, Redis 512 MB, Node services 320 MB with a 192 MB heap, nginx 64 MB):
@@ -257,7 +271,6 @@ Type safety runs end to end: the web app imports only the **type** of the gatewa
 
 ## Next phases
 
-1. AWS vantage: read the 24/7 prober that already runs in AWS (Lambda + DynamoDB, see `docs/HANDOFF.md` §5.4).
-2. Kubernetes: kind cluster + Helm chart, e2e tests against the cluster in CI, ArgoCD.
-3. Semantic search over CI logs and reviews — postponed; the unfinished code is parked on the local branch
+1. Kubernetes: kind cluster + Helm chart, e2e tests against the cluster in CI, ArgoCD.
+2. Semantic search over CI logs and reviews — postponed; the unfinished code is parked on the local branch
    `labwatch-wip` (see `docs/HANDOFF.md` §5.3).
