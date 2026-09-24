@@ -1,12 +1,20 @@
 # Task3 — Windows registry: show P5, create P6
 
+## How to demo
+
+1. Double-click `registry\create-p5.reg` (confirm UAC) — creates `HKLM\SOFTWARE\Zakharov` with `P5` (three lines)
+2. Run `Task3.RegistryViewer` **as administrator** → **Show P5** (3 lines) → **Create P6** (2 lines)
+3. `regedit` → `HKEY_LOCAL_MACHINE\SOFTWARE\Zakharov` shows `P5` and `P6` of type `REG_MULTI_SZ`
+
+## What it does
+
 Key `HKLM\SOFTWARE\Zakharov` with the value `P5` of type **MultiString** (`REG_MULTI_SZ`) and a Windows Forms program
 with two buttons:
 
 - **Show P5** — shows every line of `P5`;
 - **Create P6** — creates `P6` (`REG_MULTI_SZ`) with two lines and shows what was stored.
 
-## Demo
+## Step by step
 
 1. Double-click [`registry/create-p5.reg`](registry/create-p5.reg) and confirm (UAC) — creates the key and `P5` with three
    lines (`Ihor Zakharov`, `Лабораторна робота 1`, `System software`).

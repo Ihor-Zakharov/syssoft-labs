@@ -1,5 +1,13 @@
 # Task1 — download a file and make a "light" copy
 
+## How to demo
+
+1. `cd C:\Temp\lab1` (any folder; in Far just open it) and run `Task1.Downloader.exe flashrom`
+2. The folder now has `manual.txt` and `Manual-LIGHT.txt` — open the second one: 17 lines are `WORD FOUND!!!`
+3. Run it again: both files are overwritten; without a word the program prints the usage
+
+## What it does
+
 Console program that downloads `manual.txt` and writes, **into the current folder**:
 
 - `manual.txt` — the original, byte for byte;

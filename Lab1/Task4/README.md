@@ -1,5 +1,13 @@
 # Task4 — send an email from the command line
 
+## How to demo
+
+1. Start Mailpit (WSL): `docker compose -f /mnt/c/Users/Ihor/projects/syssoft-labs/Lab1/Task4/compose.yaml up -d`
+2. PowerShell: `$env:LAB1_SMTP_HOST="localhost"; $env:LAB1_SMTP_PORT="1025"; $env:LAB1_SMTP_SECURITY="none"; $env:LAB1_SMTP_FROM="ihor.o.zakharov@gmail.com"; Task4.Mailer.exe teacher@knu.ua LAB-1`
+3. Open <http://localhost:8025> — the message `LAB-1` with the date, time, name and surname; `Task4.Mailer.exe` without arguments prints the usage
+
+## What it does
+
 Console program that sends an email whose text contains the current **date, time, first name and last name**. Two
 arguments are required — the recipient address and the subject (the assignment uses `LAB-1`); without them the program
 prints help.
