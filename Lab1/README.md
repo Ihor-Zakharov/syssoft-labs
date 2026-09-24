@@ -9,3 +9,5 @@ with a short demo. All tests: `dotnet test Lab1.slnx`.
 | [Task2](Task2/) | database `ZAKHAROV-LAB1` in LocalDB, table `MyVisitedCities` shown in a `DataGridView` | SSMS, LocalDB, WinForms |
 | [Task3](Task3/) | reads `P5` (`REG_MULTI_SZ`) from `HKLM\SOFTWARE\Zakharov`, creates `P6` with two lines | Registry, WinForms |
 | [Task4](Task4/) | sends an email with the date, time, first and last name; recipient and subject are required | Console, SMTP (MailKit) through Gmail; Mailpit in Docker for tests |
+
+Run any task by name from any folder: `sysprog lab1 task1 flashrom` (see [tools/README.md](../tools/README.md)).

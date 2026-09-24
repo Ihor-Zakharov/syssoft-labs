@@ -15,6 +15,15 @@ All tests: `dotnet test Lab1/Lab1.slnx`.
 | [Task3](Lab1/Task3/) | Windows Forms: shows the `REG_MULTI_SZ` value `P5` from `HKLM\SOFTWARE\Zakharov`, creates `P6` with two lines |
 | [Task4](Lab1/Task4/) | sends an email with the date, time, first and last name; the recipient and the subject are required |
 
+## Run the labs: `sysprog`
+
+```
+sysprog lab1 task1 flashrom     # build if needed and run a task in the current folder
+sysprog list | test lab1 | help
+```
+
+PowerShell and bash versions with Tab completion — install with `tools/sysprog.ps1 install` or `tools/sysprog install`; see [tools/README.md](tools/README.md).
+
 ## labwatch — [`labwatch/`](labwatch/README.md)
 
 Monitoring dashboard for this repository and the lab's environment (NestJS microservices, tRPC, React, PostgreSQL,
@@ -58,3 +67,16 @@ Repository settings → Secrets and variables → Actions:
 
 The review action only runs when `review.yml` in a pull request is identical to the one on `main`, so changes to
 `review.yml` take effect after they reach `main`.
+
+## AI-assisted development
+
+| File | Purpose |
+|---|---|
+| [`AGENTS.md`](AGENTS.md) | rules for every AI agent: repo map, environment split, commands, conventions, security rules, definition of done |
+| [`CLAUDE.md`](CLAUDE.md) | Claude Code entry point: imports `AGENTS.md` + Claude-specific notes |
+| [`.agents/skills/`](.agents/skills/) | shared skills (also `.claude/skills`): run/add a lab task, verify before push, labwatch development, Terraform changes, PR review, defense prep |
+| [`.claude/agents/`](.claude/agents/) | subagents: `lab-reviewer`, `test-runner`, `infra-auditor` |
+| [`.claude/settings.json`](.claude/settings.json) | shared permissions: safe checks allowed, pushes/merges ask, secret files and `terraform apply/destroy` denied |
+
+The CI review (`review.yml`) loads the project's `CLAUDE.md` and settings, so the same rules guide it.
+`.claude/skills` is a symlink: run Claude Code from WSL, or enable `core.symlinks` + Developer Mode on Windows.

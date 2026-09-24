@@ -1,0 +1,194 @@
+#!/usr/bin/env bash
+# sysprog - run, build and test the lab tasks by name: sysprog lab1 task1 flashrom
+#
+# Labs and tasks are discovered from the repository layout (Lab<N>/Task<M>/<Project>/*.csproj), nothing is
+# hard-coded. Names are case-insensitive and may be bare numbers: "lab1", "Lab1" and "1" are the same lab.
+# On WSL the Windows .NET SDK (dotnet.exe) builds and runs the tasks: they target Windows (WinForms, registry).
+set -euo pipefail
+
+SCRIPT="$(readlink -f "${BASH_SOURCE[0]}")"
+ROOT="$(dirname "$(dirname "$SCRIPT")")"
+COMMANDS="help list build test open readme install uninstall"
+BLOCK_START='# >>> sysprog >>>'
+BLOCK_END='# <<< sysprog <<<'
+
+die() { echo "$*" >&2; exit 2; }
+
+is_wsl() { grep -qi microsoft /proc/version 2>/dev/null; }
+
+# Windows paths for dotnet.exe on WSL, unchanged elsewhere
+native_path() { if [[ -n "${WINDOWS_DOTNET:-}" ]]; then wslpath -w "$1"; else printf '%s' "$1"; fi; }
+
+find_dotnet() {
+  if command -v dotnet >/dev/null 2>&1 && ! is_wsl; then DOTNET=dotnet; WINDOWS_DOTNET=; return; fi
+  if is_wsl; then
+    for candidate in "$(command -v dotnet.exe 2>/dev/null || true)" "/mnt/c/Program Files/dotnet/dotnet.exe"; do
+      if [[ -n "$candidate" && -x "$candidate" ]]; then DOTNET="$candidate"; WINDOWS_DOTNET=1; return; fi
+    done
+  fi
+  die "No .NET SDK found. Install the .NET 10 SDK (on WSL the Windows SDK in C:\\Program Files\\dotnet is used)."
+}
+
+number_of() { # number_of <name> <prefix> -> prints N for "prefixN" / "N", fails otherwise
+  local name="${1,,}" prefix="$2"
+  name="${name#"$prefix"}"
+  [[ "$name" =~ ^[0-9]+$ ]] && printf '%d' "$((10#$name))"
+}
+
+labs() { find "$ROOT" -mindepth 1 -maxdepth 1 -type d -regex '.*/Lab[0-9]+' -printf '%f\n' | sort -V; }
+tasks() { find "$ROOT/$1" -mindepth 1 -maxdepth 1 -type d -regex '.*/Task[0-9]+' -printf '%f\n' | sort -V; }
+
+resolve_lab() {
+  local n; n="$(number_of "$1" lab)" || die "Unknown lab '$1'. Labs: $(labs | paste -sd, -)"
+  [[ -d "$ROOT/Lab$n" ]] || die "Unknown lab '$1'. Labs: $(labs | paste -sd, -)"
+  printf 'Lab%s' "$n"
+}
+
+resolve_task() {
+  local n; n="$(number_of "$2" task)" || die "Unknown task '$2' in $1. Tasks: $(tasks "$1" | paste -sd, -)"
+  [[ -d "$ROOT/$1/Task$n" ]] || die "Unknown task '$2' in $1. Tasks: $(tasks "$1" | paste -sd, -)"
+  printf 'Task%s' "$n"
+}
+
+project_of() { find "$ROOT/$1/$2" -mindepth 2 -maxdepth 2 -name '*.csproj' ! -name '*.Tests.csproj' | head -1; }
+tests_of() { find "$ROOT/$1/$2" -mindepth 2 -maxdepth 2 -name '*.Tests.csproj' | head -1; }
+
+describe() { # first H1 of the task README without the "TaskN — " prefix
+  local readme="$ROOT/$1/$2/README.md"
+  [[ -f "$readme" ]] && grep -m1 '^# ' "$readme" | sed -E 's/^#\s*//; s/^Task[0-9]+\s*\S+\s*//' || true
+}
+
+kind_of() { grep -qiE '<UseWindowsForms>\s*true' "$1" && echo WinForms || echo Console; }
+
+exe_of() {
+  local csproj="$1" tfm
+  tfm="$(grep -oP '(?<=<TargetFramework>)[^<]+' "$csproj" || echo net10.0)"
+  printf '%s/bin/Release/%s/%s.exe' "$(dirname "$csproj")" "$tfm" "$(basename "$csproj" .csproj)"
+}
+
+build_if_needed() { # rebuild only when a source file is newer than the executable
+  local csproj="$1" exe; exe="$(exe_of "$csproj")"
+  if [[ -f "$exe" ]] && [[ -z "$(find "$(dirname "$csproj")" \( -path '*/bin' -o -path '*/obj' \) -prune -o \
+      -type f \( -name '*.cs' -o -name '*.csproj' -o -name '*.resx' \) -newer "$exe" -print -quit)" ]]; then
+    return
+  fi
+  echo "Building $(basename "$csproj" .csproj)..." >&2
+  "$DOTNET" build "$(native_path "$csproj")" -c Release --nologo -v q -clp:NoSummary
+}
+
+cmd_list() {
+  local lab task csproj
+  for lab in $(labs); do
+    for task in $(tasks "$lab"); do
+      csproj="$(project_of "$lab" "$task")"
+      printf '%-6s %-7s %-24s %-9s %s\n' "${lab,,}" "${task,,}" "$(basename "$csproj" .csproj)" \
+        "$(kind_of "$csproj")" "$(describe "$lab" "$task")"
+    done
+  done
+}
+
+cmd_help() {
+  cat <<'EOF'
+sysprog - run the lab tasks by name
+
+  sysprog <lab> <task> [args...]   build if needed and run, args passed as is (e.g. sysprog lab1 task1 flashrom)
+  sysprog list                     all labs and tasks
+  sysprog build [lab]              build all labs or one
+  sysprog test [lab [task]]        run tests of all labs, one lab or one task
+  sysprog open <lab>               open the lab solution in Visual Studio (Windows / WSL)
+  sysprog readme <lab> <task>      print the task README
+  sysprog install | uninstall      add/remove the 'sysprog' command and tab completion in ~/.bashrc
+
+Names are case-insensitive and may be numbers: lab1 = Lab1 = 1, task2 = 2.
+The program runs in the CURRENT folder (Task1 writes its files there).
+
+EOF
+  cmd_list
+}
+
+rc_file() { printf '%s' "${SYSPROG_RC:-$HOME/.bashrc}"; }
+
+remove_block() { # prints the rc file without the sysprog block
+  awk -v s="$BLOCK_START" -v e="$BLOCK_END" '$0==s{skip=1} !skip{print} $0==e{skip=0}' "$1"
+}
+
+cmd_install() {
+  local rc; rc="$(rc_file)"; touch "$rc"
+  local rest; rest="$(remove_block "$rc")"
+  {
+    printf '%s\n\n' "$rest"
+    cat <<EOF
+$BLOCK_START
+alias sysprog='$SCRIPT'
+_sysprog_complete() {
+  local cur="\${COMP_WORDS[COMP_CWORD]}"
+  COMPREPLY=(\$(compgen -W "\$('$SCRIPT' __complete "\${COMP_WORDS[@]:1:COMP_CWORD-1}")" -- "\$cur"))
+}
+complete -F _sysprog_complete sysprog
+$BLOCK_END
+EOF
+  } > "$rc.sysprog.tmp" && mv "$rc.sysprog.tmp" "$rc"
+  echo "Added sysprog to $rc. Open a new terminal (or run: source $rc)."
+}
+
+cmd_uninstall() {
+  local rc; rc="$(rc_file)"
+  [[ -f "$rc" ]] && remove_block "$rc" > "$rc.sysprog.tmp" && mv "$rc.sysprog.tmp" "$rc"
+  echo "Removed sysprog from $rc."
+}
+
+cmd_complete() { # candidates for tab completion, given the words already typed after "sysprog"
+  local lab
+  if (($# == 0)); then echo "$COMMANDS" $(labs | tr 'A-Z' 'a-z'); return; fi
+  case "${1,,}" in
+    build|test|open|readme)
+      if (($# == 1)); then labs | tr 'A-Z' 'a-z'; return; fi
+      if (($# == 2)) && [[ "${1,,}" == test || "${1,,}" == readme ]]; then
+        lab="$(resolve_lab "$2" 2>/dev/null)" && tasks "$lab" | tr 'A-Z' 'a-z'
+      fi ;;
+    *)
+      if (($# == 1)); then lab="$(resolve_lab "$1" 2>/dev/null)" && tasks "$lab" | tr 'A-Z' 'a-z'; fi ;;
+  esac
+  return 0
+}
+
+# ---------------------------------------------------------------------------------------------------------------
+
+command="${1:-help}"
+case "${command,,}" in
+  help|-h|--help) cmd_help ;;
+  list) cmd_list ;;
+  __complete) shift; cmd_complete "$@" ;;
+  install) cmd_install ;;
+  uninstall) cmd_uninstall ;;
+  build)
+    find_dotnet
+    if (($# > 1)); then set -- "$(resolve_lab "$2")"; else set -- $(labs); fi
+    for lab in "$@"; do "$DOTNET" build "$(native_path "$ROOT/$lab/$lab.slnx")" -c Release --nologo; done ;;
+  test)
+    find_dotnet
+    if (($# > 2)); then
+      lab="$(resolve_lab "$2")"; task="$(resolve_task "$lab" "$3")"
+      tests="$(tests_of "$lab" "$task")"; [[ -n "$tests" ]] || die "No test project in $lab/$task"
+      "$DOTNET" test "$(native_path "$tests")" --nologo
+    else
+      if (($# > 1)); then set -- "$(resolve_lab "$2")"; else set -- $(labs); fi
+      for lab in "$@"; do "$DOTNET" test "$(native_path "$ROOT/$lab/$lab.slnx")" --nologo; done
+    fi ;;
+  open)
+    (($# > 1)) || die "Usage: sysprog open <lab>"
+    lab="$(resolve_lab "$2")"
+    if is_wsl; then cmd.exe /c start "" "$(wslpath -w "$ROOT/$lab/$lab.slnx")" 2>/dev/null
+    else xdg-open "$ROOT/$lab/$lab.slnx"; fi ;;
+  readme)
+    (($# > 2)) || die "Usage: sysprog readme <lab> <task>"
+    lab="$(resolve_lab "$2")"; cat "$ROOT/$lab/$(resolve_task "$lab" "$3")/README.md" ;;
+  *)
+    (($# > 1)) || die "Usage: sysprog <lab> <task> [args...]  (sysprog help)"
+    lab="$(resolve_lab "$1")"; task="$(resolve_task "$lab" "$2")"; shift 2
+    csproj="$(project_of "$lab" "$task")"; [[ -n "$csproj" ]] || die "No runnable project in $lab/$task"
+    find_dotnet
+    build_if_needed "$csproj"
+    [[ "$task" == Task3 ]] && echo "Hint: writing HKLM (Create P6) needs the program to run as administrator." >&2
+    exec "$(exe_of "$csproj")" "$@" ;;
+esac
