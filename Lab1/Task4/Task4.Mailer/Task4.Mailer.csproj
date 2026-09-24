@@ -8,7 +8,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="Task1.Downloader.Tests" />
+    <InternalsVisibleTo Include="Task4.Mailer.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MailKit" Version="4.18.0" />
   </ItemGroup>
 
 </Project>

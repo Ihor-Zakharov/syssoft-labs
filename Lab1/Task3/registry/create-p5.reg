@@ -1,0 +1,13 @@
+Windows Registry Editor Version 5.00
+
+; Lab 1, Task 3: key HKLM\SOFTWARE\Zakharov with P5 (REG_MULTI_SZ):
+;   Ihor Zakharov | Laboratorna robota 1 (Cyrillic) | System software
+; hex(7) is the raw UTF-16LE value, so the Cyrillic line does not depend on the file encoding.
+; Import: double-click (confirm UAC) or  reg import create-p5.reg  in an administrator console.
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Zakharov]
+"P5"=hex(7):49,00,68,00,6f,00,72,00,20,00,5a,00,61,00,6b,00,68,00,61,00,72,00,\
+  6f,00,76,00,00,00,1b,04,30,04,31,04,3e,04,40,04,30,04,42,04,3e,04,40,04,3d,\
+  04,30,04,20,00,40,04,3e,04,31,04,3e,04,42,04,30,04,20,00,31,00,00,00,53,00,\
+  79,00,73,00,74,00,65,00,6d,00,20,00,73,00,6f,00,66,00,74,00,77,00,61,00,72,\
+  00,65,00,00,00,00,00

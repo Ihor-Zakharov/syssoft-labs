@@ -3,4 +3,16 @@
     <Project Path="Task1/Task1.Downloader.Tests/Task1.Downloader.Tests.csproj" />
     <Project Path="Task1/Task1.Downloader/Task1.Downloader.csproj" />
   </Folder>
+  <Folder Name="/Task2/">
+    <Project Path="Task2/Task2.CitiesViewer.Tests/Task2.CitiesViewer.Tests.csproj" />
+    <Project Path="Task2/Task2.CitiesViewer/Task2.CitiesViewer.csproj" />
+  </Folder>
+  <Folder Name="/Task3/">
+    <Project Path="Task3/Task3.RegistryViewer.Tests/Task3.RegistryViewer.Tests.csproj" />
+    <Project Path="Task3/Task3.RegistryViewer/Task3.RegistryViewer.csproj" />
+  </Folder>
+  <Folder Name="/Task4/">
+    <Project Path="Task4/Task4.Mailer.Tests/Task4.Mailer.Tests.csproj" />
+    <Project Path="Task4/Task4.Mailer/Task4.Mailer.csproj" />
+  </Folder>
 </Solution>
