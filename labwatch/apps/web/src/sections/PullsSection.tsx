@@ -1,7 +1,8 @@
-import type { PrComment, PrReview, PullRow } from '@labwatch/shared';
-import { useQuery } from '@tanstack/react-query';
+import { PAGE_SIZE, type PrComment, type PrReview, type PullRow } from '@labwatch/shared';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Fragment, lazy, Suspense, useState } from 'react';
 import { AreaBadges, Badge, ReviewBadge, ReviewStateBadge, runLabel, runTone, type Tone } from '../components/Badge';
+import { NewerNotice, Pager, usePageAnchor, useRememberAnchor } from '../components/Pager';
 import { formatDate, timeAgo } from '../format';
 import { useTRPC } from '../trpc';
 
@@ -120,10 +121,12 @@ function PullDetail({ number, now }: { number: number; now: number }) {
   );
 }
 
-export function PullsSection({ branch, now }: { branch: string | null; now: number }) {
+export function PullsSection({ branch, page, onPage, now }: { branch: string | null; page: number; onPage: (page: number) => void; now: number }) {
   const trpc = useTRPC();
-  const pulls = useQuery(trpc.pulls.queryOptions({ branch, limit: 30 }));
-  const data = pulls.data ?? [];
+  const { anchor, remember } = usePageAnchor(page, branch ?? '');
+  const pulls = useQuery({ ...trpc.pulls.queryOptions({ branch, page, pageSize: PAGE_SIZE, anchor }), placeholderData: keepPreviousData });
+  useRememberAnchor(pulls.isPlaceholderData ? undefined : pulls.data, page, remember, onPage);
+  const data = pulls.data?.rows ?? [];
   const [expanded, setExpanded] = useState<number | null>(null);
   // On a branch tab with a single PR its details are what you came for: open them
   const openNumber = branch && data.length === 1 && expanded === null ? data[0]!.number : expanded;
@@ -132,8 +135,11 @@ export function PullsSection({ branch, now }: { branch: string | null; now: numb
     <section className="card" aria-label="Pull requests">
       <div className="card-head">
         <h2>{branch ? `Pull requests from ${branch}` : 'Pull requests · all branches'}</h2>
-        <span className="muted small">{data.filter((p) => p.state === 'open').length} open</span>
+        <span className="muted small">
+          {data.filter((p) => p.state === 'open').length} open{pulls.data ? ` · ${pulls.data.total} total` : ''}
+        </span>
       </div>
+      <NewerNotice paged={pulls.data} onLatest={() => onPage(1)} noun="update" />
       {pulls.isPending ? (
         <p className="muted">Loading…</p>
       ) : data.length === 0 ? (
@@ -235,6 +241,7 @@ export function PullsSection({ branch, now }: { branch: string | null; now: numb
           </table>
         </div>
       )}
+      <Pager paged={pulls.data} onPage={onPage} label="Pull requests" />
     </section>
   );
 }

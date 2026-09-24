@@ -1053,3 +1053,64 @@ table.fixed td {
 .checked {
   margin-top: 12px !important;
 }
+
+/* ── Pager (15 rows per page) ─────────────────────────────────────────── */
+.pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-top: 12px;
+  min-height: 32px; /* same height whatever the buttons say */
+}
+.pager-btn {
+  min-width: 32px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-variant-numeric: tabular-nums; /* "9" and "10" take the same width: the pager does not jiggle */
+  cursor: pointer;
+}
+.pager-btn:hover:not(:disabled) {
+  background: var(--muted-bg);
+}
+.pager-btn:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 1px;
+}
+.pager-btn:disabled {
+  color: var(--muted);
+  cursor: default;
+  opacity: 0.6;
+}
+.pager-btn.pager-on {
+  background: var(--run-bg);
+  border-color: var(--run);
+  color: var(--run);
+  font-weight: 600;
+}
+.pager-gap {
+  min-width: 20px;
+  text-align: center;
+  color: var(--muted);
+}
+.pager-range {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+.newer-notice {
+  margin: 0 0 8px;
+}
+.link-button {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--link);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+}

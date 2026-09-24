@@ -1,7 +1,8 @@
-import type { CiJob, CiRunRow, TestReport } from '@labwatch/shared';
-import { useQuery } from '@tanstack/react-query';
+import { PAGE_SIZE, type CiJob, type CiRunRow, type TestReport } from '@labwatch/shared';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Fragment, useState } from 'react';
 import { Badge, ReviewBadge, TestsBadge, runLabel, runTone } from '../components/Badge';
+import { NewerNotice, Pager, usePageAnchor, useRememberAnchor } from '../components/Pager';
 import { duration, durationBetween, formatDate, shortSha, timeAgo } from '../format';
 import { useTRPC } from '../trpc';
 
@@ -162,19 +163,25 @@ function RunDetail({ runId, now }: { runId: number; now: number }) {
   );
 }
 
-export function CiSection({ branch, now }: { branch: string | null; now: number }) {
+export function CiSection({ branch, page, onPage, now }: { branch: string | null; page: number; onPage: (page: number) => void; now: number }) {
   const trpc = useTRPC();
-  const runs = useQuery(trpc.ciRuns.queryOptions({ branch, limit: branch ? 30 : 40 }));
+  const { anchor, remember } = usePageAnchor(page, branch ?? '');
+  // keepPreviousData: the old page stays on screen while the next one loads (no "Loading…" flash)
+  const runs = useQuery({ ...trpc.ciRuns.queryOptions({ branch, page, pageSize: PAGE_SIZE, anchor }), placeholderData: keepPreviousData });
+  useRememberAnchor(runs.isPlaceholderData ? undefined : runs.data, page, remember, onPage);
   const [expanded, setExpanded] = useState<number | null>(null);
-  const data = runs.data ?? [];
+  const data = runs.data?.rows ?? [];
   const columns = branch ? 7 : 8;
 
   return (
     <section className="card" aria-label="CI runs">
       <div className="card-head">
         <h2>{branch ? `CI runs on ${branch}` : 'CI runs · all branches'}</h2>
-        <span className="muted small">{data.filter((r) => r.status !== 'completed').length} active</span>
+        <span className="muted small">
+          {data.filter((r) => r.status !== 'completed').length} active{runs.data ? ` · ${runs.data.total} runs` : ''}
+        </span>
       </div>
+      <NewerNotice paged={runs.data} onLatest={() => onPage(1)} noun="run" />
       {runs.isPending ? (
         <p className="muted">Loading…</p>
       ) : data.length === 0 ? (
@@ -269,6 +276,7 @@ export function CiSection({ branch, now }: { branch: string | null; now: number 
           </table>
         </div>
       )}
+      <Pager paged={runs.data} onPage={onPage} label="CI runs" />
     </section>
   );
 }

@@ -1,4 +1,5 @@
 import {
+  PAGE_SIZE,
   STATUS_LEVEL_LABELS,
   STATUS_SCALES,
   STATUS_SCALE_KEYS,
@@ -9,9 +10,10 @@ import {
   type StatusTargetView,
   type UptimeBucket,
 } from '@labwatch/shared';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useRef, useState, type KeyboardEvent } from 'react';
 import { Badge, Dot, statusTone } from '../components/Badge';
+import { NewerNotice, Pager, usePageAnchor, useRememberAnchor } from '../components/Pager';
 import { formatDate, formatDay, formatSeconds, formatTime, timeAgo } from '../format';
 import { useTRPC } from '../trpc';
 
@@ -142,7 +144,13 @@ export function StatusSection({ scale, onScale, now }: { scale: StatusScale; onS
   const trpc = useTRPC();
   const [vantage, setVantage] = useState(ALL);
   const page = useQuery({ ...trpc.statusPage.queryOptions({ scale, vantage }), refetchInterval: 60_000, placeholderData: (previous) => previous });
-  const incidents = useQuery(trpc.incidents.queryOptions({ limit: 20 }));
+  const [incidentsPage, setIncidentsPage] = useState(1);
+  const { anchor, remember } = usePageAnchor(incidentsPage, 'incidents');
+  const incidents = useQuery({
+    ...trpc.incidents.queryOptions({ page: incidentsPage, pageSize: PAGE_SIZE, anchor }),
+    placeholderData: keepPreviousData,
+  });
+  useRememberAnchor(incidents.isPlaceholderData ? undefined : incidents.data, incidentsPage, remember, setIncidentsPage);
   const data = page.data;
 
   return (
@@ -204,11 +212,12 @@ export function StatusSection({ scale, onScale, now }: { scale: StatusScale; onS
 
       <section className="card">
         <h2>Past incidents</h2>
-        {!incidents.data || incidents.data.length === 0 ? (
+        <NewerNotice paged={incidents.data} onLatest={() => setIncidentsPage(1)} noun="incident" />
+        {!incidents.data || incidents.data.rows.length === 0 ? (
           <p className="muted">No incidents recorded.</p>
         ) : (
           <ul className="list">
-            {incidents.data.map((i) => (
+            {incidents.data.rows.map((i) => (
               <li key={i.id}>
                 <div>
                   <Badge tone={i.resolvedAt ? 'muted' : 'bad'}>{i.resolvedAt ? 'resolved' : 'ongoing'}</Badge> <strong>{i.targetName}</strong> was down from{' '}
@@ -223,6 +232,7 @@ export function StatusSection({ scale, onScale, now }: { scale: StatusScale; onS
             ))}
           </ul>
         )}
+        <Pager paged={incidents.data} onPage={setIncidentsPage} label="Past incidents" />
       </section>
     </div>
   );
