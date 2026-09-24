@@ -38,9 +38,7 @@ jobs:
 
       - name: Send
         env:
-          LAB1_SMTP_HOST: smtp.gmail.com
-          LAB1_SMTP_PORT: "587"
-          LAB1_SMTP_SECURITY: starttls
+          # Gmail (smtp.gmail.com:587, STARTTLS) is the program's default: only the login is needed
           LAB1_SMTP_USER: ${{ vars.LAB1_SMTP_USER }}
           LAB1_SMTP_PASSWORD: ${{ secrets.LAB1_SMTP_PASSWORD }}
           # Inputs are passed through the environment, never pasted into the script (no shell injection)
