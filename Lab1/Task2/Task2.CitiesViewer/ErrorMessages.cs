@@ -2,18 +2,11 @@ namespace Task2.CitiesViewer;
 
 internal static class ErrorMessages
 {
-    private const int CannotOpenDatabase = 4060;
-    private const int InvalidObjectName = 208;
-
-    /// <summary>Turns the most likely SQL Server errors into a hint on how to fix them.</summary>
-    public static string ForSqlError(int number, string message, string database) => number switch
+    /// <summary>A hint for the two errors that mean "the lab database is not set up yet".</summary>
+    public static string ForSqlError(int number, string message) => number switch
     {
-        CannotOpenDatabase =>
-            $"The database {database} does not exist or cannot be opened.\n\n" +
-            "Create the lab database in SSMS: run Lab1/Task2/sql/01-create-database.sql, then 02-schema-and-data.sql.",
-        InvalidObjectName =>
-            $"The table dbo.MyVisitedCities does not exist in {database}.\n\n" +
-            "Run Lab1/Task2/sql/02-schema-and-data.sql against the database in SSMS.",
+        4060 => $"The database {ConnectionSettings.Database} does not exist. Create it in SSMS with sql/01-create-database.sql and sql/02-schema-and-data.sql.",
+        208 => "The table dbo.MyVisitedCities does not exist. Run sql/02-schema-and-data.sql in SSMS.",
         _ => message,
     };
 }

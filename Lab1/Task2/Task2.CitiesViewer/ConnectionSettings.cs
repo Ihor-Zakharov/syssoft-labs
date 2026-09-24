@@ -1,42 +1,13 @@
-using Microsoft.Data.SqlClient;
-
 namespace Task2.CitiesViewer;
-
-/// <summary>Where the program connects to — without credentials, safe to show in the UI.</summary>
-internal sealed record ConnectionInfo(string Server, string Database)
-{
-    public string Description => $"{Server} / {Database}";
-}
 
 internal static class ConnectionSettings
 {
-    public const string EnvironmentVariable = "LAB1_TASK2_CONNECTION";
+    public const string Server = @"(localdb)\MSSQLLocalDB";
+    public const string Database = "ZAKHAROV-LAB1";
 
-    // LocalDB uses a self-signed certificate, so it has to be trusted explicitly (the client encrypts by default).
-    // The first connection may start the LocalDB instance, which can take longer than the default 15 s.
-    // ConnectRetryCount=0: SqlClient treats error 4060 (no such database) as transient and waits 10 s before retrying,
-    // which only makes sense for Azure SQL failovers, not for a local database.
-    public const string Default =
-        @"Server=(localdb)\MSSQLLocalDB;Database=ZAKHAROV-LAB1;Integrated Security=true;TrustServerCertificate=true;Connect Timeout=30;ConnectRetryCount=0";
-
-    /// <summary>Command-line argument first, then the environment variable, then <see cref="Default"/>.</summary>
-    public static string Resolve(string[] args, string? fromEnvironment)
-    {
-        if (args.Length > 0 && !string.IsNullOrWhiteSpace(args[0]))
-        {
-            return args[0];
-        }
-
-        return string.IsNullOrWhiteSpace(fromEnvironment) ? Default : fromEnvironment;
-    }
-
-    /// <summary>
-    /// Parses the connection string once. A malformed string (unknown keyword, missing '=') throws
-    /// <see cref="ArgumentException"/> — the caller reports it instead of crashing.
-    /// </summary>
-    public static ConnectionInfo Parse(string connectionString)
-    {
-        var builder = new SqlConnectionStringBuilder(connectionString);
-        return new ConnectionInfo(builder.DataSource, builder.InitialCatalog);
-    }
+    // TrustServerCertificate: LocalDB uses a self-signed certificate and the client encrypts by default.
+    // Connect Timeout=30: the first connection may start the LocalDB instance.
+    // ConnectRetryCount=0: otherwise a missing database (error 4060) is retried after 10 s.
+    public const string ConnectionString =
+        $"Server={Server};Database={Database};Integrated Security=true;TrustServerCertificate=true;Connect Timeout=30;ConnectRetryCount=0";
 }
