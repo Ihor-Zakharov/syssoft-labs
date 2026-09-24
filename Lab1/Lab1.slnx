@@ -3,4 +3,8 @@
     <Project Path="Task1/Task1.Downloader.Tests/Task1.Downloader.Tests.csproj" />
     <Project Path="Task1/Task1.Downloader/Task1.Downloader.csproj" />
   </Folder>
+  <Folder Name="/Task2/">
+    <Project Path="Task2/Task2.CitiesViewer.Tests/Task2.CitiesViewer.Tests.csproj" />
+    <Project Path="Task2/Task2.CitiesViewer/Task2.CitiesViewer.csproj" />
+  </Folder>
 </Solution>

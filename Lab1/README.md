@@ -1,1 +1,8 @@
 # Lab1
+
+Open [`Lab1.slnx`](Lab1.slnx) in Visual Studio. Each task has its own folder with the program, its tests and a README.
+
+| Task | What it does | Tech |
+|---|---|---|
+| [Task1](Task1/) | downloads `manual.txt` and writes `Manual-LIGHT.txt` where lines with a word become `WORD FOUND!!!` | Console, `HttpClient`, certificate pinning |
+| [Task2](Task2/) | database `ZAKHAROV-LAB1` in LocalDB, table `MyVisitedCities` shown in a `DataGridView` | SSMS, LocalDB, WinForms |
