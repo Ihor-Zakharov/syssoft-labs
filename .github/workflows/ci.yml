@@ -3,9 +3,9 @@ name: CI
 on:
   push:
     branches: [main]
-    paths-ignore: ['labwatch/**', '**/*.md']
+    paths-ignore: ['labwatch/**', 'infra/**', '**/*.md', '.github/workflows/labwatch.yml', '.github/workflows/infra.yml']
   pull_request:
-    paths-ignore: ['labwatch/**', '**/*.md']
+    paths-ignore: ['labwatch/**', 'infra/**', '**/*.md', '.github/workflows/labwatch.yml', '.github/workflows/infra.yml']
 
 permissions:
   contents: read
